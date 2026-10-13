@@ -98,3 +98,7 @@ Enter one food or drink score per line, for example `Burger — 4.75/5. Ask for 
 The **Force pull list** button reads encrypted envelopes from `inbox/` on `asre1212/Restuarants` main. The signed-in owner's verified account authorizes decryption; the runtime secret never goes to GitHub or the browser. No list is consumed by a page preview or an automatic check. The app commits locally and rereads records to verify them before acknowledging deletion. Matching entries are skipped; a delivery explicitly marked `updateRatings` may update only the overall rating of matching entries, preserving notes, Michelin stars, IDs and Trash.
 
 A GitHub Actions workflow checks acknowledged envelopes on its five-minute schedule and deletes only confirmed deliveries. GitHub can delay scheduled runs. Deletion removes the current file; Git history retains encrypted ciphertext. The local notebook is never uploaded. For future assistant additions, save the `add_restaurants` tool's returned `github_payload` to its `github_path` using GitHub before telling the user it is queued.
+
+The force-pull reader uses raw GitHub files and the checked `inbox/index.json` index, avoiding unauthenticated GitHub REST API rate limits. Add each prepared delivery filename to that index. The cleanup workflow updates the index after removing acknowledged deliveries.
+
+Navigation is one horizontal row: All restaurants, local cities alphabetically, and Michelin last. On small screens the row scrolls horizontally.

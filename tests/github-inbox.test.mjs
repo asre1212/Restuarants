@@ -5,7 +5,7 @@ const args={delivery_id:'test-delivery01',restaurants:[{name:'Synthetic Cafe',ci
 const result=await worker.fetch(request('/mcp','owner@example.test',{jsonrpc:'2.0',id:1,method:'tools/call',params:{name:'add_restaurants',arguments:args}}),env).then(r=>r.json());
 const prepared=JSON.parse(result.result.content[0].text);assert.equal(prepared.prepared,1);assert.equal(prepared.saved_on_device,false);assert.ok(!JSON.stringify(prepared.github_payload).includes('Synthetic Cafe'));
 const envelope=prepared.github_payload;
-globalThis.fetch=async url=>new Response(JSON.stringify(String(url).includes('/'+envelope.id+'.json')?{content:Buffer.from(JSON.stringify(envelope)).toString('base64')}:[{type:'file',name:envelope.id+'.json',path:'inbox/'+envelope.id+'.json'}]),{headers:{'Content-Type':'application/json'}});
+globalThis.fetch=async url=>new Response(JSON.stringify(String(url).includes('/'+envelope.id+'.json')?envelope:{format:'restaurants-inbox-index',version:1,files:[envelope.id+'.json']}),{headers:{'Content-Type':'application/json'}});
 try{
  assert.equal((await worker.fetch(request('/api/github/pull',null,{}),env)).status,401);
  assert.equal((await worker.fetch(request('/api/github/pull','owner@example.test',{},'https://other.example'),env)).status,403);

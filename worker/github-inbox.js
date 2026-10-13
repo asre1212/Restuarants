@@ -1,4 +1,4 @@
-const GITHUB_ROOT='https://api.github.com/repos/asre1212/Restuarants/contents/inbox';
+const GITHUB_ROOT='https://raw.githubusercontent.com/asre1212/Restuarants/main/inbox';
 const GITHUB_HEADERS={'Accept':'application/vnd.github+json','User-Agent':'Restaurants-inbox'};
 const from64=s=>Uint8Array.from(atob(s),c=>c.charCodeAt(0));
 const to64=b=>btoa(Array.from(new Uint8Array(b),v=>String.fromCharCode(v)).join(''));
@@ -21,7 +21,7 @@ export async function prepareGitHubDelivery(request,env,args){
  const packet={format:'restaurant-log-import',version:1,restaurants:args.restaurants.map(r=>clean(r))};
  const e={format:'restaurants-encrypted-inbox',version:1,id:args.delivery_id,recipient:await recipientFor(request),expiresAt:Date.now()+7*86400000,iv:to64(crypto.getRandomValues(new Uint8Array(12)))};
  e.ciphertext=to64(await crypto.subtle.encrypt({name:'AES-GCM',iv:from64(e.iv),additionalData:envelopeAAD(e)},await encryptionKey(env),new TextEncoder().encode(JSON.stringify(packet))));
- return {prepared:packet.restaurants.length,github_path:`inbox/${e.id}.json`,github_payload:e,saved_on_device:false,next_step:'Save github_payload to github_path in asre1212/Restuarants on main using GitHub. Only then confirm it is queued. The user presses Force pull list to save it locally and acknowledge deletion.'};
+ return {prepared:packet.restaurants.length,github_path:`inbox/${e.id}.json`,github_payload:e,saved_on_device:false,next_step:'Save github_payload to github_path in asre1212/Restuarants on main using GitHub, and add that filename to inbox/index.json (format restaurants-inbox-index, version 1, files array). Only then confirm it is queued. The user presses Force pull list to save it locally and acknowledge deletion.'};
 }
 async function githubJSON(url){const r=await fetch(url,{headers:GITHUB_HEADERS,cache:'no-store'});if(r.status===404)return null;if(!r.ok)throw Error(`GitHub returned ${r.status}. Try again later.`);const text=await r.text();if(text.length>1000000)throw Error('GitHub response too large.');return JSON.parse(text);}
 export async function githubInboxFetch(request,env){
@@ -34,12 +34,12 @@ export async function githubInboxFetch(request,env){
  try{
   const recipient=await recipientFor(request);
   if(url.pathname==='/api/github/pull'){
-   const listing=await githubJSON(GITHUB_ROOT+'?ref=main');if(!listing)return json({packets:[],message:'No GitHub deliveries waiting.'});
-   if(!Array.isArray(listing))throw Error('Invalid GitHub inbox listing.');
-   const files=listing.filter(f=>f.type==='file'&&/^inbox\/[A-Za-z0-9_-]{8,100}\.json$/.test(f.path));if(files.length>20)throw Error('More than 20 GitHub deliveries. Ask your assistant to split the queue.');
+   const listing=await githubJSON(GITHUB_ROOT+'/index.json?fresh='+Date.now());if(!listing)return json({packets:[],message:'No GitHub deliveries waiting.'});
+   if(listing.format!=='restaurants-inbox-index'||listing.version!==1||!Array.isArray(listing.files))throw Error('Invalid GitHub inbox index.');
+   const files=listing.files;if(files.some(f=>typeof f!=='string'||! /^[A-Za-z0-9_-]{8,100}\.json$/.test(f)))throw Error('Invalid GitHub inbox filename.');if(files.length>20)throw Error('More than 20 GitHub deliveries. Ask your assistant to split the queue.');
    const packets=[];
-   for(const file of files){const data=await githubJSON(GITHUB_ROOT+'/'+encodeURIComponent(file.name)+'?ref=main');if(!data)continue;const e=JSON.parse(new TextDecoder().decode(from64(data.content.replace(/\s/g,''))));if(file.name!==e.id+'.json')throw Error('GitHub delivery ID does not match its filename.');const packet=await decodeEnvelope(request,env,e);if(packet)packets.push(packet);}
-   return json({packets});
+   for(const file of files){const e=await githubJSON(GITHUB_ROOT+'/'+encodeURIComponent(file)+'?fresh='+Date.now());if(!e)continue;if(file!==e.id+'.json')throw Error('GitHub delivery ID does not match its filename.');const packet=await decodeEnvelope(request,env,e);if(packet)packets.push(packet);}
+   return json({packets,unmatched:files.length>0&&packets.length===0});
   }
   if(url.pathname==='/api/github/ack'){
    if(!env.BUCKET)throw Error('Receipt storage unavailable.');

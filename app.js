@@ -11,12 +11,12 @@ async function refresh(){rows=await all();render();}
 function render(){
  const active=rows.filter(r=>!r.deletedAt),cities=[...new Set(active.map(r=>r.city))].sort((a,b)=>a.localeCompare(b));
  if(selectedCity&&!cities.includes(selectedCity))selectedCity='';
- $('cities').replaceChildren();for(const city of ['',...cities]){const b=button(city||'All cities',()=>{selectedCity=city;render();});b.setAttribute('aria-current',String(city===selectedCity));$('cities').append(b);}
+ $('cities').replaceChildren();for(const [index,city] of cities.entries()){const b=button(city,()=>{collection='all';selectedCity=city;render();});b.id='city-tab-'+index;b.setAttribute('role','tab');b.setAttribute('aria-controls','restaurants');b.setAttribute('aria-selected',String(collection==='all'&&city===selectedCity));$('cities').append(b);}
  for(const [id,values]of [['city-options',cities],['cuisine-options',[...new Set(active.map(r=>r.cuisine))].sort()]]){$(id).replaceChildren(...values.map(v=>{const o=node('option');o.value=v;return o;}));}
  const q=norm($('search').value);let found=active.filter(r=>(!selectedCity||r.city===selectedCity)&&(!q||norm([r.name,r.city,r.cuisine,r.notes,r.address,...r.tags].join(' ')).includes(q)));
  if(collection==='michelin')found=sortMichelin(active.filter(r=>!q||norm([r.name,r.city,r.cuisine,r.notes,r.address,...r.tags].join(' ')).includes(q)));
- $('cities').hidden=collection==='michelin';$('sort').disabled=collection==='michelin';$('sort').parentElement.hidden=collection==='michelin';
- $('tab-all').setAttribute('aria-selected',String(collection==='all'));$('tab-michelin').setAttribute('aria-selected',String(collection==='michelin'));$('michelin-count').textContent=active.filter(r=>r.michelinStars>0).length||'';$('restaurants').setAttribute('aria-labelledby',collection==='all'?'tab-all':'tab-michelin');
+ $('sort').disabled=collection==='michelin';$('sort').parentElement.hidden=collection==='michelin';
+ $('tab-all').setAttribute('aria-selected',String(collection==='all'&&!selectedCity));$('tab-michelin').setAttribute('aria-selected',String(collection==='michelin'));$('michelin-count').textContent=active.filter(r=>r.michelinStars>0).length||'';$('restaurants').setAttribute('aria-labelledby',collection==='michelin'?'tab-michelin':selectedCity?'city-tab-'+cities.indexOf(selectedCity):'tab-all');
  $('city-heading').textContent=collection==='michelin'?'Michelin · stars, then your rating':selectedCity||'Your collection';$('count').textContent=`${found.length} ${found.length===1?'restaurant':'restaurants'}`;
  $('empty').hidden=active.length>0||collection==='michelin';$('restaurants').replaceChildren();
  if((active.length||collection==='michelin')&&!found.length)$('restaurants').append(node('p',collection==='michelin'?'No starred restaurants here yet. Mark Michelin entries in All restaurants.':'No restaurants match. Try another city or search.','hint'));
@@ -33,8 +33,8 @@ function edit(r){$('edit-form').reset();$('edit-error').textContent='';$('edit-i
 $('add').onclick=()=>edit();$('empty-add').onclick=()=>edit();
 $('edit-form').addEventListener('submit',async event=>{event.preventDefault();if(busy)return;try{const raw=Object.fromEntries(['name','city','cuisine','rating','notes','address','url'].map(f=>[f,$(f).value]));raw.michelinStars=$('michelin-enabled').checked?Number($('michelin-stars').value):0;raw.tags=$('tags').value.split(',').map(t=>t.trim()).filter(Boolean);const value=clean(raw),old=rows.find(r=>r.id===$('edit-id').value),now=new Date().toISOString();busy=true;$('save').disabled=true;await write([{...value,id:old?.id||crypto.randomUUID(),createdAt:old?.createdAt||now,updatedAt:now}]);await refresh();$('editor').close();toast('Restaurant saved on this device.');}catch(e){$('edit-error').textContent=e.message;}finally{busy=false;$('save').disabled=false;}});
 $('michelin-enabled').onchange=()=>{$('michelin-stars').disabled=!$('michelin-enabled').checked;};
-$('tab-all').onclick=()=>{collection='all';render();};$('tab-michelin').onclick=()=>{collection='michelin';render();};
-for(const id of ['tab-all','tab-michelin'])$(id).onkeydown=e=>{if(['ArrowLeft','ArrowRight','Home','End'].includes(e.key)){e.preventDefault();const target=e.key==='Home'?'tab-all':e.key==='End'?'tab-michelin':id==='tab-all'?'tab-michelin':'tab-all';$(target).click();$(target).focus();}};
+$('tab-all').onclick=()=>{collection='all';selectedCity='';render();};$('tab-michelin').onclick=()=>{collection='michelin';render();};
+document.querySelector('.collection-tabs').addEventListener('keydown',e=>{if(!['ArrowLeft','ArrowRight','Home','End'].includes(e.key))return;const buttons=[...document.querySelectorAll('.collection-tabs [role=tab]')],index=buttons.indexOf(e.target);if(index<0)return;e.preventDefault();const next=e.key==='Home'?0:e.key==='End'?buttons.length-1:(index+(e.key==='ArrowRight'?1:-1)+buttons.length)%buttons.length,id=buttons[next].id;buttons[next].click();$(id)?.focus();});
 $('search').oninput=render;$('sort').onchange=render;
 for(const b of document.querySelectorAll('[data-close]'))b.onclick=()=>$(b.dataset.close).close();
 function startImport(kind='list'){reviewRows=[];$('import-text').value='';$('import-file').value='';$('default-city').value=selectedCity;$('default-cuisine').value='';$('review').replaceChildren();$('import-actions').hidden=true;$('import-error').textContent='';$('import-title').textContent=kind==='assistant'?'Add from your assistant':kind==='restore'?'Restore or merge a backup':'Bring your list';$('importer').showModal();}
@@ -114,6 +114,7 @@ $('github-pull').onclick=async()=>{
   const response=await fetch('./api/github/pull',{method:'POST',credentials:'same-origin',cache:'no-store'}),data=await response.json();
   if(!response.ok)throw Error(data.error||'GitHub pull failed.');
   if(!Array.isArray(data.packets))throw Error('Invalid GitHub response.');
+  if(data.unmatched)throw Error('A list is waiting for a different ChatGPT account. Sign in with the account used in this chat.');
   for(const packet of data.packets){
    const parsed=parseImport(JSON.stringify(packet.packet));if(parsed.some(r=>r.error))throw Error('Invalid GitHub entry fields.');
    saved+=await mergeDelivery('github:'+packet.id,parsed.map(r=>r.value),packet.packet.updateRatings===true);
