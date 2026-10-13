@@ -1,1 +1,73 @@
 # Restuarants
+
+# Table Notes
+
+A buildless, local-only restaurant notebook. No account, backend, analytics, external font, or cloud data API. First launch is empty.
+
+## Run
+
+Use an HTTP server, not `file://`:
+
+```sh
+npm run serve
+```
+
+Open http://localhost:8080. HTTPS is required for service workers outside localhost.
+
+## Deploy to GitHub Pages
+
+Publish this directory's static files at a stable path. Every asset, manifest entry, and service-worker scope is relative, so a project prefix such as `/restaurants/` or `/wine/restaurants/` works without rebuilding. Include `icons/`. No build step or dependency installation is needed. Never commit exported restaurant backups or any private user data.
+
+Keep the origin and deployment path stable: origin changes create separate browser storage and changing the path may change the installed app's identity. Back up before any move. A Pages subpath is **not** a security boundary: JavaScript in another app on the same origin could access IndexedDB. This app never reads or modifies other apps' databases, workers, or caches. Check other apps for origin-wide cleanup operations before co-hosting.
+
+For updates, change the `CACHE` release suffix in `sw.js` whenever an app-shell asset changes. New versions wait and display an Update app button. Updating never deletes IndexedDB. The button refuses to reload while a dialog is open. App caches are scope-namespaced; only older caches with that exact scope prefix are deleted.
+
+## Privacy and storage
+
+Restaurants, ratings, notes, addresses, URLs, tags, and Trash stay in the `table-notes-local-v1` IndexedDB database. The only setting is the last backup-export time. No localStorage is used. Service-worker caches contain an explicit allowlist of static app files only; third-party URLs and imported data are never cached. Clicking a restaurant website opens that site separately. The hosting provider can see ordinary static-file requests.
+
+Device-only data may be removed by the OS/browser, private browsing, uninstalling, or clearing site data. Request durable storage when available, but keep backups. An export reminder appears when data exists and the last export was over seven days ago. Download initiation cannot verify that the user actually saved the file. Save it to Files/iCloud Drive or another trusted place. To move phones, export on the old phone and import that file in the new installed app. Browser and installed-app storage may differ, especially on iOS.
+
+## Features
+
+- City navigation and collapsible cuisine groups
+- Rating 0–5, with decimals; unrated always last; alphabetical tie-breaking
+- Search across name, city, cuisine, notes, address, and tags
+- Add/edit and recoverable Trash; backups include Trash
+- Batch-add multiline names, header-based CSV, or structured JSON
+- Review and edit every imported row before saving; invalid rows block saving unless deselected or corrected
+- Atomic merge-only imports; existing records never overwritten
+- Duplicate identity: normalized name + city + cuisine + address (including Trash)
+- Versioned JSON backup export and restore
+- No remotely connected assistant: only paste/file handoff, reviewed locally
+
+## Import formats
+
+JSON backup: `format: "restaurant-log-backup"`, `version: 1`, `restaurants: [...]`.
+Assistant packet: `format: "restaurant-log-import"`, `version: 1`, `restaurants: [...]`.
+A plain array of restaurant objects is also accepted.
+
+Restaurant fields:
+
+```json
+{
+  "name": "Restaurant name",
+  "city": "City",
+  "cuisine": "Cuisine",
+  "rating": null,
+  "notes": "",
+  "address": "",
+  "url": "",
+  "tags": []
+}
+```
+
+The example is a schema illustration, not preloaded restaurant data. Required fields are name, city, and cuisine. Default city/cuisine can be supplied in the import form. Ratings are never inferred. Missing ratings stay null. Only absolute http/https URLs are allowed. Imports are limited to 5 MB and 2,000 rows at a time; individual notes are limited to 20,000 characters and other text fields to 1,000. Split larger imports before loading them.
+
+CSV header supports `name,city,cuisine,rating,notes,address,url,tags`; use semicolons between tags, standard CSV quotes for commas/newlines, and `""` for embedded quotes. Headerless input is one complete name per line, even if it contains numbers or commas. The parser deliberately does not guess field positions or ratings.
+
+When an authorized browser assistant is operating the open app, `window.tableNotes.prepareImport(packet)` can open the same review UI. This helper does not save anything. The user must still confirm the reviewed import. No token or remote API exists.
+
+## Verification
+
+`npm test` runs the dependency-free parsing, validation, sorting, backup round-trip, and deduplication tests. `node --check app.js` and `node --check sw.js` check syntax. For the optional DOM/IndexedDB simulation, run `npm install` then `npm run test:dom` (dev dependencies only; production needs none). See `QA.md` for executed checks and remaining manual tests.
