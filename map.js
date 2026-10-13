@@ -2,8 +2,12 @@ import {all,setting,updateLocation} from './db.js';
 const $=id=>document.getElementById(id);
 export const hasLocation=r=>Number.isFinite(r.latitude)&&Number.isFinite(r.longitude)&&Math.abs(r.latitude)<=90&&Math.abs(r.longitude)<=180;
 const nameKey=s=>String(s||'').normalize('NFKD').toLowerCase().replace(/[^a-z0-9]/g,'');
-export function candidates(data){return (data?.features||[]).filter(f=>Array.isArray(f.geometry?.coordinates)&&f.geometry.coordinates.length>=2).map(f=>({name:f.properties?.name||'',address:[f.properties?.housenumber,f.properties?.street,f.properties?.city,f.properties?.state,f.properties?.country].filter(Boolean).join(', '),city:f.properties?.city||'',latitude:f.geometry.coordinates[1],longitude:f.geometry.coordinates[0]})).filter(hasLocation);}
-export function exactMatch(r,matches){const exact=matches.filter(m=>nameKey(m.name)===nameKey(r.name)&&nameKey(m.city)===nameKey(r.city)&&(!r.address||nameKey(m.address).includes(nameKey(r.address))));return exact.length===1?exact[0]:null;}
+export function candidates(data){return (data?.features||[]).filter(f=>Array.isArray(f.geometry?.coordinates)&&f.geometry.coordinates.length>=2).map(f=>({name:f.properties?.name||'',address:[[f.properties?.housenumber,f.properties?.street].filter(Boolean).join(' '),f.properties?.city,f.properties?.state,f.properties?.postcode,f.properties?.country].filter(Boolean).join(', '),city:f.properties?.city||'',latitude:f.geometry.coordinates[1],longitude:f.geometry.coordinates[0]})).filter(hasLocation);}
+const nycNames=new Set(['nyc','newyork','newyorkcity','manhattan','brooklyn','queens','bronx','thebronx','statenisland','astoria','longislandcity','jacksonheights']);
+function sameCity(r,m){const a=nameKey(r.city),b=nameKey(m.city);if(a===b)return true;return nycNames.has(a)&&nycNames.has(b)&&m.latitude>=40.4&&m.latitude<=41&&m.longitude>=-74.3&&m.longitude<=-73.6;}
+const streetKey=s=>String(s||'').split(',')[0].toLowerCase().replace(/\b(street|avenue|road|boulevard|place|north|south|east|west)\b/g,w=>({street:'st',avenue:'ave',road:'rd',boulevard:'blvd',place:'pl',north:'n',south:'s',east:'e',west:'w'}[w])).replace(/[^a-z0-9]/g,'');
+function sameAddress(a,b){if(!a)return true;const zip=String(a).match(/\b\d{5}(?:-\d{4})?\b/);return streetKey(a)===streetKey(b)&&(!zip||String(b).includes(zip[0].slice(0,5)));}
+export function exactMatch(r,matches){const exact=matches.filter(m=>nameKey(m.name)===nameKey(r.name)&&sameCity(r,m)&&sameAddress(r.address,m.address));return exact.length===1?exact[0]:null;}
 export function createRestaurantMap({getRows,onChange,onEdit,onError}){
  let map,layer,lastBounds='',looking=false,requested=false,reviewId;
  const text=(tag,value)=>{const n=document.createElement(tag);n.textContent=value;return n;};
