@@ -1,12 +1,12 @@
 # Restuarants
 
-# Table Notes
+# Restaurants
 
 [Open the hosted app](https://table-notes-restaurants.savorymug256.chatgpt.site/)
 
 ## Assistant inbox
 
-Install the Table Notes plugin offered in ChatGPT. Open the hosted app and click **Connect assistant inbox with ChatGPT** once using the same account. Then tell ChatGPT: “Use Table Notes to add [restaurant], in [city], cuisine [cuisine].” The `add_restaurants` tool queues a delivery; it cannot read your notebook. Open the app to receive entries automatically and see **New from assistant** badges. Use **Mark seen** to clear the badges. Checks run on launch, return to the app, and when a form closes. **Check assistant inbox** runs one manually.
+Install the Restaurants plugin offered in ChatGPT. Open the hosted app and click **Connect assistant inbox with ChatGPT** once using the same account. Then tell ChatGPT: “Use Restaurants to add [restaurant], in [city], cuisine [cuisine].” The `add_restaurants` tool queues a delivery; it cannot read your notebook. Open the app to receive entries automatically and see **New from assistant** badges. Use **Mark seen** to clear the badges. Checks run on launch, return to the app, and when a form closes. **Check assistant inbox** runs one manually.
 
 Only incoming deliveries live in the account-isolated hosted inbox. Your existing restaurants, personal edits, ratings, notes, Trash, and backups remain local and are never uploaded. The app commits entries and a receipt atomically before requesting deletion from the inbox. Retries and cross-tab imports do not add duplicate deliveries. The first device to import drains the delivery; other devices do not sync. Deliveries expire after seven days and expired packets are deleted on the next inbox access. The inbox is a handoff queue, not a backup.
 
@@ -84,3 +84,11 @@ When an authorized browser assistant is operating the open app, `window.tableNot
 
 `npm test` runs the dependency-free parsing, validation, sorting, backup round-trip, and deduplication tests. `node --check app.js` and `node --check sw.js` check syntax. For the optional DOM/IndexedDB simulation, run `npm install` then `npm run test:dom` (dev dependencies only; production needs none). See `QA.md` for executed checks and remaining manual tests.
 
+
+## Michelin collection
+
+Each listing has a Michelin checkbox and a 1–3 star selector; the editor has the same controls. Starred entries appear automatically in the Michelin tab, ordered by stars (3 first), then personal rating (highest first, unrated last), then name. Both tabs reference the same local record, so edits, removal, Trash and restoration stay consistent. Older records default to unstarred. JSON and CSV imports and backups preserve `michelinStars` (0–3). Michelin values are entered by the user, not verified or inferred.
+
+## Tasting notes
+
+Enter one food or drink score per line, for example `Burger — 4.75/5. Ask for relish on the side.` Explicit `/5` and `:5` scores render as a compact tasting list with comments. General notes remain separate. Dish scores are never averaged into an overall restaurant rating, and the raw notes are retained in local storage and backups.

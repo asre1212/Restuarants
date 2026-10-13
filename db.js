@@ -13,3 +13,9 @@ export function mergeDelivery(id,incoming){return new Promise((resolve,reject)=>
  const receipt=settings.get('delivery:'+id);receipt.onsuccess=()=>{if(receipt.result)return;const current=records.getAll();current.onsuccess=()=>{try{const plan=planImport(current.result,incoming),now=new Date().toISOString();for(const row of plan.add)records.put({...row,id:crypto.randomUUID(),createdAt:now,updatedAt:now,assistantNew:true});count=plan.add.length;settings.put({key:'delivery:'+id,value:true});}catch{tx.abort();}};};
  tx.oncomplete=()=>resolve(count);tx.onerror=()=>reject(tx.error);tx.onabort=()=>reject(tx.error||Error('Could not save inbox entries.'));
 });}
+
+export function updateMichelin(id,michelinStars){return new Promise((resolve,reject)=>{
+ const tx=db.transaction('restaurants','readwrite'),store=tx.objectStore('restaurants'),request=store.get(id);
+ request.onsuccess=()=>{if(request.result)store.put({...request.result,michelinStars,updatedAt:new Date().toISOString()});};
+ tx.oncomplete=resolve;tx.onerror=()=>reject(tx.error);tx.onabort=()=>reject(tx.error||Error('Could not save Michelin selection.'));
+});}

@@ -11,6 +11,9 @@ export function clean(input, defaults = {}) {
     out[field] = value.trim();
   }
   if (!out.name || !out.city || !out.cuisine) throw Error('Name, city, and cuisine are required.');
+  const stars=input.michelinStars??0;
+  if(!['number','string'].includes(typeof stars)||! /^[0-3]$/.test(String(stars)))throw Error('Michelin stars must be 0, 1, 2, or 3.');
+  out.michelinStars=Number(stars);
   const rating = input.rating;
   if (rating === '' || rating === null || rating === undefined) out.rating = null;
   else {
@@ -42,8 +45,8 @@ export function parseImport(text, defaults={}) {
     if(Array.isArray(data))raw=data;
     else {if(!['restaurant-log-backup','restaurant-log-import'].includes(data.format)||data.version!==VERSION||!Array.isArray(data.restaurants))throw Error('Unsupported JSON format or version.');raw=data.restaurants;}
   } else {
-    const rows=parseCSV(t);const headers=rows[0].map(norm);const allowed=['name','city','cuisine','rating','notes','address','url','tags'];
-    if(headers.includes('name')) {if(headers.some(h=>!allowed.includes(h))||new Set(headers).size!==headers.length)throw Error('CSV headers must be unique: name, city, cuisine, rating, notes, address, url, tags.');raw=rows.slice(1).map(row=>{if(row.length>headers.length)throw Error('CSV row has more values than its header.');const obj=Object.fromEntries(headers.map((h,i)=>[h,row[i]??'']));if(obj.tags!==undefined)obj.tags=obj.tags.split(';').map(t=>t.trim()).filter(Boolean);return obj;});}
+    const rows=parseCSV(t);const headers=rows[0].map(norm);const allowed=['name','city','cuisine','rating','notes','address','url','tags','michelinstars'];
+    if(headers.includes('name')) {if(headers.some(h=>!allowed.includes(h))||new Set(headers).size!==headers.length)throw Error('CSV headers must be unique: name, city, cuisine, rating, notes, address, url, tags, michelinStars.');raw=rows.slice(1).map(row=>{if(row.length>headers.length)throw Error('CSV row has more values than its header.');const obj=Object.fromEntries(headers.map((h,i)=>[h,row[i]??'']));if(obj.michelinstars!==undefined){obj.michelinStars=obj.michelinstars||0;delete obj.michelinstars;}if(obj.tags!==undefined)obj.tags=obj.tags.split(';').map(t=>t.trim()).filter(Boolean);return obj;});}
     else raw=t.split(/\r?\n/).map(name=>({name:name.trim()})).filter(r=>r.name);
   }
   if(raw.length>2000)throw Error('Import at most 2,000 restaurants at a time.');
@@ -52,4 +55,19 @@ export function parseImport(text, defaults={}) {
 export function planImport(existing, incoming) {
   const ids=new Set(existing.map(key));const add=[];let duplicates=0;
   for(const row of incoming){const r=clean(row);const k=key(r);if(ids.has(k)){duplicates++;continue;}ids.add(k);add.push(r);}return {add,duplicates};
+}
+
+
+export function sortMichelin(rows){return sortRestaurants(rows.filter(r=>!r.deletedAt&&r.michelinStars>0)).sort((a,b)=>b.michelinStars-a.michelinStars);}
+
+// Display explicit tasting scores; keep the source notes intact and never average them.
+export function tastingNotes(notes){
+ const lines=String(notes??'').split(/\r?\n/),items=[],general=[];
+ for(const line of lines){
+  const match=line.match(/^(.*?)\s*(\d+(?:\.\d+)?)\s*(?:\/\s*a?5|:\s*5)\b(.*)$/i);
+  if(!match||Number(match[2])>5||!match[1].trim()){if(line.trim())general.push(line.trim());continue;}
+  const name=match[1].trim().replace(/[—–:\s]+$/,'').trim(),comment=match[3].trim().replace(/^[.,;\s]+/,'');
+  items.push({name,rating:Number(match[2]),comment});
+ }
+ return {items,general};
 }
