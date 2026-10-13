@@ -1,4 +1,6 @@
 node_modules/
+*.log
+tests/*.png
 *.backup.json
 dist/
 site.tar.gz
