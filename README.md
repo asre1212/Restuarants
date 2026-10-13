@@ -2,7 +2,18 @@
 
 # Table Notes
 
-A buildless, local-only restaurant notebook. No account, backend, analytics, external font, or cloud data API. First launch is empty.
+[Open the hosted app](https://table-notes-restaurants.savorymug256.chatgpt.site/)
+
+## Assistant inbox
+
+Install the Table Notes plugin offered in ChatGPT. Open the hosted app and click **Connect assistant inbox with ChatGPT** once using the same account. Then tell ChatGPT: “Use Table Notes to add [restaurant], in [city], cuisine [cuisine].” The `add_restaurants` tool queues a delivery; it cannot read your notebook. Open the app to receive entries automatically and see **New from assistant** badges. Use **Mark seen** to clear the badges. Checks run on launch, return to the app, and when a form closes. **Check assistant inbox** runs one manually.
+
+Only incoming deliveries live in the account-isolated hosted inbox. Your existing restaurants, personal edits, ratings, notes, Trash, and backups remain local and are never uploaded. The app commits entries and a receipt atomically before requesting deletion from the inbox. Retries and cross-tab imports do not add duplicate deliveries. The first device to import drains the delivery; other devices do not sync. Deliveries expire after seven days and expired packets are deleted on the next inbox access. The inbox is a handoff queue, not a backup.
+
+Hosting runs in a Cloudflare Worker through Sites. `worker/inbox.js` implements authenticated MCP tools and inbox GET/receipt endpoints. Sites provides caller identity; all storage keys are account-scoped. Inbox responses are never cached. `scripts/embed-app.mjs` builds the allowlisted static assets into the Worker. Run `npm run build`, then `npm run validate`. The original static app remains usable without a backend, but assistant delivery requires the hosted origin.
+
+
+A buildless, local-only restaurant notebook. No analytics or external fonts. The optional inbox uses ChatGPT sign-in and temporary delivery storage. First launch is empty.
 
 ## Run
 
@@ -24,7 +35,7 @@ For updates, change the `CACHE` release suffix in `sw.js` whenever an app-shell 
 
 ## Privacy and storage
 
-Restaurants, ratings, notes, addresses, URLs, tags, and Trash stay in the `table-notes-local-v1` IndexedDB database. The only setting is the last backup-export time. No localStorage is used. Service-worker caches contain an explicit allowlist of static app files only; third-party URLs and imported data are never cached. Clicking a restaurant website opens that site separately. The hosting provider can see ordinary static-file requests.
+Restaurants, ratings, notes, addresses, URLs, tags, and Trash stay in the `table-notes-local-v1` IndexedDB database. Local settings include the last backup-export time and delivery receipt IDs. No localStorage is used. Service-worker caches contain an explicit allowlist of static app files only; third-party URLs and imported data are never cached. Clicking a restaurant website opens that site separately. The hosting provider can see ordinary static-file requests.
 
 Device-only data may be removed by the OS/browser, private browsing, uninstalling, or clearing site data. Request durable storage when available, but keep backups. An export reminder appears when data exists and the last export was over seven days ago. Download initiation cannot verify that the user actually saved the file. Save it to Files/iCloud Drive or another trusted place. To move phones, export on the old phone and import that file in the new installed app. Browser and installed-app storage may differ, especially on iOS.
 
@@ -39,7 +50,8 @@ Device-only data may be removed by the OS/browser, private browsing, uninstallin
 - Atomic merge-only imports; existing records never overwritten
 - Duplicate identity: normalized name + city + cuisine + address (including Trash)
 - Versioned JSON backup export and restore
-- No remotely connected assistant: only paste/file handoff, reviewed locally
+- Connected assistant inbox: automatic device-local delivery imports and new-entry badges
+- Paste/file handoff remains available with local review
 
 ## Import formats
 
@@ -66,8 +78,9 @@ The example is a schema illustration, not preloaded restaurant data. Required fi
 
 CSV header supports `name,city,cuisine,rating,notes,address,url,tags`; use semicolons between tags, standard CSV quotes for commas/newlines, and `""` for embedded quotes. Headerless input is one complete name per line, even if it contains numbers or commas. The parser deliberately does not guess field positions or ratings.
 
-When an authorized browser assistant is operating the open app, `window.tableNotes.prepareImport(packet)` can open the same review UI. This helper does not save anything. The user must still confirm the reviewed import. No token or remote API exists.
+When an authorized browser assistant is operating the open app, `window.tableNotes.prepareImport(packet)` can open the same review UI. This helper does not save anything. The user must still confirm the reviewed import. The separate connected inbox accepts only new deliveries and cannot read the local notebook.
 
 ## Verification
 
 `npm test` runs the dependency-free parsing, validation, sorting, backup round-trip, and deduplication tests. `node --check app.js` and `node --check sw.js` check syntax. For the optional DOM/IndexedDB simulation, run `npm install` then `npm run test:dom` (dev dependencies only; production needs none). See `QA.md` for executed checks and remaining manual tests.
+

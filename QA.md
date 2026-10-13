@@ -22,3 +22,8 @@ Before declaring production-ready, test on iPhone Safari and an installed Home S
 6. Deploy a bumped cache version; ensure Update app appears, refuses while a form is open, and preserves saved data.
 7. Verify narrow-screen layout, keyboard navigation, dialog focus, and screen-reader labels.
 8. Test under the exact intended GitHub Pages subpath and check for interference from other apps on the same origin.
+
+
+## 2026-10-13 assistant inbox update
+
+Passed: 11 existing core/service-worker tests; Worker authentication, per-account isolation, URL validation, duplicate pending packet retries, CSRF receipt protection, receipt traversal rejection, expiry cleanup, main-page and asset serving. Syntax checks passed for client, service worker, database module and Worker. Artifact ESM validation passed. Browser QA and optional DOM/IndexedDB simulation were unavailable (no browser skill or cached development dependencies); sign-in and installed-iPhone behavior still need device verification.
