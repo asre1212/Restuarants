@@ -79,7 +79,7 @@ async function checkInbox(){
    const ack=await fetch('./api/inbox/ack',{method:'POST',credentials:'same-origin',cache:'no-store',headers:{'Content-Type':'application/json'},body:JSON.stringify({ids:[packet.id]})});
    if(!ack.ok)throw Error('Entries saved locally; inbox receipt will be retried.');
   }
-  await refresh();$('inbox-status').textContent=added?`${added} new restaurants saved on this device.`:'Assistant inbox connected. No new deliveries.';
+  await refresh();const saved=rows.filter(r=>!r.deletedAt).length;$('inbox-status').textContent=added?`${added} new restaurants saved on this device. ${saved} total.`:`Inbox up to date · ${saved} ${saved===1?'restaurant':'restaurants'} saved on this device.`;
   if(added)toast(`${added} new restaurants from your assistant.`);
  }catch(e){await refresh().catch(()=>{});$('inbox-status').textContent=e.message;}
  finally{checkingInbox=false;$('inbox-check').disabled=false;}
