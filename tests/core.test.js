@@ -1,6 +1,6 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
-import {clean,sortRestaurants,parseImport,planImport,parseCSV} from '../core.js';
+import {clean,sortRestaurants,parseImport,planImport,parseCSV,roundQuarter} from '../core.js';
 const r=(name,rating=null)=>clean({name,city:'London',cuisine:'Italian',rating});
 test('ratings accept decimals and zero, reject coercion and unsafe links',()=>{assert.equal(r('A',0).rating,0);assert.equal(r('A','4.25').rating,4.25);for(const rating of [false,{},-1,5.1,'four','Infinity'])assert.throws(()=>r('A',rating));assert.throws(()=>clean({...r('A'),url:'javascript:alert(1)'}));});
 test('best and worst put unrated last with alphabetical ties',()=>{const rows=[r('Z'),r('B',4),r('A',4),r('C',0)];assert.deepEqual(sortRestaurants(rows).map(r=>r.name),['A','B','C','Z']);assert.deepEqual(sortRestaurants(rows,'worst').map(r=>r.name),['C','A','B','Z']);});
@@ -9,3 +9,11 @@ test('CSV supports quoted multiline notes, explicit ratings, tags',()=>{const x=
 test('JSON validation catches unsupported format, invalid rows, script URL',()=>{assert.throws(()=>parseImport('{"version":2,"restaurants":[]}'));assert.ok(parseImport('[{"name":"a"}]')[0].error);assert.ok(parseImport(JSON.stringify([{...r('A'),url:'data:text/html,evil'}]))[0].error);assert.ok(parseImport('[null]')[0].error);});
 test('backup round-trip keeps notes and trash; merge deduplicates case and input duplicates',()=>{const original={...r('A',3.5),notes:'Private\nnotes',deletedAt:'2026-10-12T00:00:00Z'};const data=parseImport(JSON.stringify({format:'restaurant-log-backup',version:1,restaurants:[original]}))[0].value;assert.deepEqual(data,original);const p=planImport([original],[r('a'),r('B'),r('B')]);assert.equal(p.duplicates,2);assert.equal(p.add.length,1);});
 test('different address remains distinct; missing required fields rejected',()=>{assert.equal(planImport([r('A')],[{...r('A'),address:'2 Main Street'}]).add.length,1);assert.throws(()=>clean({name:'A',city:'',cuisine:'X'}));});
+
+
+test('ratings round to nearest quarter after validation; unrated and raw tasting notes survive',()=>{
+ for(const [input,expected]of [[4.3,4.25],[4.2,4.25],[4.9,5],[3.9,4],[3.18,3.25],[4.125,4.25],[0,0],[5,5]])assert.equal(r('A',input).rating,expected);
+ assert.equal(roundQuarter(null),null);assert.equal(r('A').rating,null);assert.throws(()=>r('A',5.01));
+ const ratings=[4.2,3.9,4.2];assert.equal(roundQuarter(ratings.reduce((a,b)=>a+b,0)/ratings.length),4);
+ const original={...r('A'),rating:4.3,notes:'Cocktail — 4.3/5.'};const imported=parseImport(JSON.stringify([original]))[0].value;assert.equal(imported.rating,4.25);assert.equal(imported.notes,original.notes);
+});

@@ -1,6 +1,6 @@
 import {createRestaurantMap} from './map.js';
-import {clean,sortRestaurants,sortMichelin,tastingNotes,key,norm,parseImport,planImport,VERSION} from './core.js';
-import {openDB,all,write,setting,mergeDelivery} from './db.js';
+import {clean,sortRestaurants,sortMichelin,tastingNotes,key,norm,parseImport,planImport,roundQuarter,VERSION} from './core.js';
+import {openDB,all,write,setting,mergeDelivery,roundStoredRatings} from './db.js';
 const $=id=>document.getElementById(id);
 const node=(tag,text,cls)=>{const n=document.createElement(tag);if(text!==undefined)n.textContent=text;if(cls)n.className=cls;return n;};
 const button=(text,action,cls)=>{const b=node('button',text,cls);b.type='button';b.addEventListener('click',action);return b;};
@@ -78,7 +78,7 @@ function renderTrash(){$('trash-list').replaceChildren();const trashed=rows.filt
 $('trash').onclick=()=>{renderTrash();$('trash-dialog').showModal();};
 $('persist').onclick=async()=>{try{$('persist-status').textContent=navigator.storage?.persist?(await navigator.storage.persist()?'Durable storage granted. Backups are still important.':'This browser did not grant durable storage. Keep regular backups.'):'This browser does not support durable-storage requests. Keep regular backups.';}catch(e){$('persist-status').textContent='Storage request unavailable. Keep regular backups.';}};
 window.tableNotes=Object.freeze({schemaVersion:VERSION,prepareImport(packet){startImport('assistant');$('import-text').value=typeof packet==='string'?packet:JSON.stringify(packet,null,2);$('preview').click();}});
-try{await openDB();const last=await setting('lastExport');window.backupDue=!last||Date.now()-last>7*86400000;await refresh();}catch(e){$('empty').hidden=true;$('restaurants').append(node('p','Device storage is unavailable. Your changes cannot be saved. Check browser privacy settings and reload.','error'));for(const b of document.querySelectorAll('button'))b.disabled=true;fail(e);}
+try{await openDB();await roundStoredRatings();const last=await setting('lastExport');window.backupDue=!last||Date.now()-last>7*86400000;await refresh();}catch(e){$('empty').hidden=true;$('restaurants').append(node('p','Device storage is unavailable. Your changes cannot be saved. Check browser privacy settings and reload.','error'));for(const b of document.querySelectorAll('button'))b.disabled=true;fail(e);}
 if('serviceWorker' in navigator){try{const registration=await navigator.serviceWorker.register('./sw.js',{scope:'./'});const showUpdate=()=>{waitingWorker=registration.waiting;if(waitingWorker)$('update').hidden=false;};showUpdate();registration.addEventListener('updatefound',()=>{const worker=registration.installing;worker?.addEventListener('statechange',()=>{if(worker.state==='installed'){if(navigator.serviceWorker.controller)showUpdate();else $('offline-status').textContent='Ready for offline use after this page has finished loading.';}});});await navigator.serviceWorker.ready;$('offline-status').textContent='App shell saved for offline use. Your restaurant data stays on this device.';$('apply-update').onclick=()=>{if(document.querySelector('dialog[open]')){toast('Finish or cancel your open form before updating.');return;}waitingWorker?.postMessage({type:'SKIP_WAITING'});};let refreshing=false;navigator.serviceWorker.addEventListener('controllerchange',()=>{if(!refreshing&&waitingWorker){refreshing=true;location.reload();}});}catch(e){$('offline-status').textContent='Offline installation unavailable. Open the app over HTTPS and try again.';}}else $('offline-status').textContent='This browser does not support offline installation.';
 
 
@@ -123,7 +123,7 @@ await checkInbox();
 function tastings(notes){
  const {items,general}=tastingNotes(notes);if(!items.length)return node('p',notes);
  const detail=node('details',undefined,'tasting-notes'),summary=node('summary',`Tasting notes · ${items.length}`);detail.append(summary);
- for(const item of items){const row=node('div',undefined,'tasting-row'),title=node('span',item.name,'tasting-name'),score=node('span',String(item.rating),'tasting-score');score.append(node('small',' / 5'));row.append(title,score);if(item.comment)row.append(node('p',item.comment,'tasting-comment'));detail.append(row);}
+ for(const item of items){const row=node('div',undefined,'tasting-row'),title=node('span',item.name,'tasting-name'),score=node('span',String(roundQuarter(item.rating)),'tasting-score');score.append(node('small',' / 5'));row.append(title,score);if(item.comment)row.append(node('p',item.comment,'tasting-comment'));detail.append(row);}
  if(general.length)detail.append(node('p',general.join('\n'),'tasting-general'));return detail;
 }
 

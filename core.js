@@ -1,4 +1,5 @@
 export const VERSION = 1;
+export const roundQuarter = rating => rating == null ? null : Math.round(rating * 4) / 4;
 export const norm = value => String(value ?? '').normalize('NFKC').trim().toLocaleLowerCase();
 export const key = r => [r.name,r.city,r.cuisine,r.address].map(norm).join('\u0000');
 export function clean(input, defaults = {}) {
@@ -25,6 +26,7 @@ export function clean(input, defaults = {}) {
     if (!['number','string'].includes(typeof rating) || !/^\d+(\.\d+)?$/.test(String(rating).trim())) throw Error('Rating must be a number from 0 to 5, or blank.');
     out.rating = Number(rating);
     if (!Number.isFinite(out.rating) || out.rating < 0 || out.rating > 5) throw Error('Rating must be from 0 to 5.');
+    out.rating = roundQuarter(out.rating);
   }
   if (out.url) { let u; try {u = new URL(out.url);} catch {throw Error('Website must be a full http or https URL.');} if (!['http:','https:'].includes(u.protocol)) throw Error('Only http and https website links are allowed.'); out.url = u.href; }
   const tags = input.tags ?? [];
