@@ -2,7 +2,7 @@
 const json=(value,status=200)=>new Response(JSON.stringify(value),{status,headers:{'Content-Type':'application/json','Cache-Control':'no-store','Vary':'Cookie'}});
 const fieldSchema={type:'object',additionalProperties:false,required:['name','city','cuisine'],properties:{michelinStars:{type:'integer',minimum:0,maximum:3},name:{type:'string'},city:{type:'string'},cuisine:{type:'string'},rating:{type:['number','null'],minimum:0,maximum:5},notes:{type:'string'},address:{type:'string'},url:{type:'string'},tags:{type:'array',items:{type:'string'}}}};
 const tools=[
- {name:'add_restaurants',description:'Send user-requested restaurants to the caller’s private Restaurants inbox. The app downloads them on next open, saves them only on that device, then deletes the delivery. Cannot read, modify, or sync existing notebook data. Never infer personal ratings. Use a stable delivery_id to retry the same packet.',inputSchema:{type:'object',additionalProperties:false,required:['restaurants','delivery_id'],properties:{restaurants:{type:'array',minItems:1,maxItems:100,items:fieldSchema},delivery_id:{type:'string',pattern:'^[A-Za-z0-9_-]{8,100}$'}}}},
+ {name:'add_restaurants',description:'Prepare an encrypted GitHub delivery. Save the returned github_payload at github_path in asre1212/Restuarants on main using GitHub. Only then confirm it is queued. The user presses Force pull list to save entries locally and acknowledge GitHub deletion. Cannot read, modify, or sync existing notebook data. Never infer personal ratings. Use a stable delivery_id to retry the same packet.',inputSchema:{type:'object',additionalProperties:false,required:['restaurants','delivery_id'],properties:{restaurants:{type:'array',minItems:1,maxItems:100,items:fieldSchema},delivery_id:{type:'string',pattern:'^[A-Za-z0-9_-]{8,100}$'}}}},
  {name:'restaurant_inbox_status',description:'Return pending delivery count for the caller, without reading their device notebook.',inputSchema:{type:'object',additionalProperties:false,properties:{}}}
 ];
 async function prefixFor(user){const digest=await crypto.subtle.digest('SHA-256',new TextEncoder().encode(user));return 'inbox/'+Array.from(new Uint8Array(digest),x=>x.toString(16).padStart(2,'0')).join('')+'/';}
@@ -10,6 +10,7 @@ async function readPackets(bucket,prefix){const listing=await bucket.list({prefi
 async function readJSON(request){const text=await request.text();if(text.length>500000)throw Error('Request too large.');return JSON.parse(text);}
 export async function inboxFetch(request,env){
  const url=new URL(request.url),user=request.headers.get('oai-authenticated-user-id');
+ if(url.pathname.startsWith('/api/github/'))return githubInboxFetch(request,env);
  if(url.pathname==='/mcp'){
   if(request.method!=='POST')return json({error:'POST required'},405);
   let msg;try{msg=await readJSON(request);}catch(e){return json({error:e.message},400);}
@@ -27,6 +28,7 @@ export async function inboxFetch(request,env){
    let result;
    if(name==='restaurant_inbox_status'){const pending=await readPackets(env.BUCKET,prefix);result={pending_deliveries:pending.length,pending_restaurants:pending.reduce((n,p)=>n+p.packet.restaurants.length,0),device_notebook_access:false};}
    else if(name==='add_restaurants'){
+    if(env.GITHUB_INBOX_KEY)return reply({content:[{type:'text',text:JSON.stringify(await prepareGitHubDelivery(request,env,args))}]});
     if(!/^[A-Za-z0-9_-]{8,100}$/.test(args.delivery_id||''))throw Error('Provide a stable delivery_id of 8–100 letters, numbers, underscores or hyphens.');
     if(!Array.isArray(args.restaurants)||args.restaurants.length<1||args.restaurants.length>100)throw Error('Send 1–100 restaurants at a time.');
     const restaurants=args.restaurants.map(r=>{const value=clean(r);if(value.deletedAt)throw Error('New deliveries cannot be in Trash.');return value;});

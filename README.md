@@ -92,3 +92,9 @@ Each listing has a Michelin checkbox and a 1–3 star selector; the editor has t
 ## Tasting notes
 
 Enter one food or drink score per line, for example `Burger — 4.75/5. Ask for relish on the side.` Explicit `/5` and `:5` scores render as a compact tasting list with comments. General notes remain separate. Dish scores are never averaged into an overall restaurant rating, and the raw notes are retained in local storage and backups.
+
+## Force pull from GitHub
+
+The **Force pull list** button reads encrypted envelopes from `inbox/` on `asre1212/Restuarants` main. The signed-in owner's verified account authorizes decryption; the runtime secret never goes to GitHub or the browser. No list is consumed by a page preview or an automatic check. The app commits locally and rereads records to verify them before acknowledging deletion. Matching entries are skipped; a delivery explicitly marked `updateRatings` may update only the overall rating of matching entries, preserving notes, Michelin stars, IDs and Trash.
+
+A GitHub Actions workflow checks acknowledged envelopes on its five-minute schedule and deletes only confirmed deliveries. GitHub can delay scheduled runs. Deletion removes the current file; Git history retains encrypted ciphertext. The local notebook is never uploaded. For future assistant additions, save the `add_restaurants` tool's returned `github_payload` to its `github_path` using GitHub before telling the user it is queued.

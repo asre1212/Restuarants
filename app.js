@@ -1,4 +1,4 @@
-import {clean,sortRestaurants,sortMichelin,tastingNotes,norm,parseImport,planImport,VERSION} from './core.js';
+import {clean,sortRestaurants,sortMichelin,tastingNotes,key,norm,parseImport,planImport,VERSION} from './core.js';
 import {openDB,all,write,setting,mergeDelivery,updateMichelin} from './db.js';
 const $=id=>document.getElementById(id);
 const node=(tag,text,cls)=>{const n=document.createElement(tag);if(text!==undefined)n.textContent=text;if(cls)n.className=cls;return n;};
@@ -106,3 +106,23 @@ function tastings(notes){
  for(const item of items){const row=node('div',undefined,'tasting-row'),title=node('span',item.name,'tasting-name'),score=node('span',String(item.rating),'tasting-score');score.append(node('small',' / 5'));row.append(title,score);if(item.comment)row.append(node('p',item.comment,'tasting-comment'));detail.append(row);}
  if(general.length)detail.append(node('p',general.join('\n'),'tasting-general'));return detail;
 }
+
+$('github-pull').onclick=async()=>{
+ if(checkingInbox||busy||document.querySelector('dialog[open]')){toast('Finish the open form before pulling.');return;}
+ checkingInbox=true;$('github-pull').disabled=true;$('inbox-check').disabled=true;let saved=0;
+ try{
+  const response=await fetch('./api/github/pull',{method:'POST',credentials:'same-origin',cache:'no-store'}),data=await response.json();
+  if(!response.ok)throw Error(data.error||'GitHub pull failed.');
+  if(!Array.isArray(data.packets))throw Error('Invalid GitHub response.');
+  for(const packet of data.packets){
+   const parsed=parseImport(JSON.stringify(packet.packet));if(parsed.some(r=>r.error))throw Error('Invalid GitHub entry fields.');
+   saved+=await mergeDelivery('github:'+packet.id,parsed.map(r=>r.value),packet.packet.updateRatings===true);
+   const verified=new Set((await all()).map(key));if(parsed.some(r=>!verified.has(key(r.value))))throw Error('Device storage verification failed. The GitHub file has been kept.');
+   const ack=await fetch('./api/github/ack',{method:'POST',credentials:'same-origin',cache:'no-store',headers:{'Content-Type':'application/json'},body:JSON.stringify({id:packet.id,receipt:packet.receipt,receiptToken:packet.receiptToken})});
+   const result=await ack.json();if(!ack.ok||!result.acknowledged)throw Error(result.error||'Saved locally; GitHub acknowledgement failed. Pull again to retry.');
+  }
+  await refresh();collection='all';selectedCity='';$('search').value='';render();
+  const message=data.packets.length?`${saved} new restaurants saved locally. Ratings updated where requested. GitHub deletion acknowledged; cleanup is scheduled.`:`No GitHub lists waiting. ${rows.filter(r=>!r.deletedAt).length} restaurants on this device.`;$('inbox-status').textContent=message;toast(message);
+ }catch(e){await refresh().catch(()=>{});$('inbox-status').textContent=e.message;toast(e.message);}
+ finally{checkingInbox=false;$('github-pull').disabled=false;$('inbox-check').disabled=false;}
+};

@@ -1,0 +1,33 @@
+name: Remove acknowledged restaurant deliveries
+on:
+  schedule:
+    - cron: '3-58/5 * * * *'
+  workflow_dispatch:
+  push:
+    paths:
+      - 'inbox/*.json'
+      - '.github/workflows/restaurant-inbox-cleanup.yml'
+permissions:
+  contents: write
+concurrency:
+  group: restaurant-inbox-cleanup
+  cancel-in-progress: false
+jobs:
+  cleanup:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+      - name: Delete only acknowledged encrypted deliveries
+        run: python3 scripts/cleanup-github-inbox.py
+      - name: Commit deletions
+        shell: bash
+        run: |
+          git add --update -- inbox
+          if git diff --cached --quiet; then exit 0; fi
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git commit -m 'Remove acknowledged restaurant deliveries'
+          git push origin HEAD:main

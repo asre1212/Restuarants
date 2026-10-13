@@ -31,3 +31,7 @@ Passed: 11 existing core/service-worker tests; Worker authentication, per-accoun
 ## 2026-10-13 Restaurants design and Michelin update
 
 Reviewed Coffee, Matcha and Wine repository UI sources. Passed 18 core, Michelin, tasting-note and service-worker tests; hosted inbox authentication/isolation checks; client/database/service-worker syntax checks; Worker artifact validation. Michelin ranking, old backup compatibility, star preservation and duplicate prevention passed. Browser and iPhone visual/interaction QA remain unverified because the supported browser-preview skill is unavailable.
+
+## Force-pull GitHub queue
+
+Added authenticated decryption, explicit user-click pull, ciphertext-only public queue, verified local-save-before-ack, signed account-bound acknowledgement, and scheduled GitHub file cleanup. Force-pull state is not consumed by automatic inbox checks. Compact listing spacing and preserved tasting details. Overall rating updates are explicitly authorized inside the encrypted user packet.
