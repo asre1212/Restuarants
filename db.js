@@ -19,3 +19,9 @@ export function updateMichelin(id,michelinStars){return new Promise((resolve,rej
  request.onsuccess=()=>{if(request.result)store.put({...request.result,michelinStars,updatedAt:new Date().toISOString()});};
  tx.oncomplete=resolve;tx.onerror=()=>reject(tx.error);tx.onabort=()=>reject(tx.error||Error('Could not save Michelin selection.'));
 });}
+
+export function updateLocation(id,latitude,longitude,expected){return new Promise((resolve,reject)=>{
+ const tx=db.transaction('restaurants','readwrite'),store=tx.objectStore('restaurants'),request=store.get(id);
+ request.onsuccess=()=>{if(request.result&&!request.result.deletedAt&&(!expected||['name','city','address'].every(f=>request.result[f]===expected[f])))store.put({...request.result,latitude,longitude,updatedAt:new Date().toISOString()});};
+ tx.oncomplete=resolve;tx.onerror=()=>reject(tx.error);tx.onabort=()=>reject(tx.error||Error('Could not save location.'));
+});}

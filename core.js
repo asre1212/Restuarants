@@ -11,6 +11,11 @@ export function clean(input, defaults = {}) {
     out[field] = value.trim();
   }
   if (!out.name || !out.city || !out.cuisine) throw Error('Name, city, and cuisine are required.');
+  for(const [field,limit] of [['latitude',90],['longitude',180]]){
+    const value=input[field];out[field]=value===undefined||value===null||value===''?null:Number(value);
+    if(out[field]!==null&&(!['number','string'].includes(typeof value)||!Number.isFinite(out[field])||Math.abs(out[field])>limit))throw Error(`Invalid ${field}.`);
+  }
+  if((out.latitude===null)!==(out.longitude===null))throw Error('Provide both latitude and longitude.');
   const stars=input.michelinStars??0;
   if(!['number','string'].includes(typeof stars)||! /^[0-3]$/.test(String(stars)))throw Error('Michelin stars must be 0, 1, 2, or 3.');
   out.michelinStars=Number(stars);
@@ -45,7 +50,7 @@ export function parseImport(text, defaults={}) {
     if(Array.isArray(data))raw=data;
     else {if(!['restaurant-log-backup','restaurant-log-import'].includes(data.format)||data.version!==VERSION||!Array.isArray(data.restaurants))throw Error('Unsupported JSON format or version.');raw=data.restaurants;}
   } else {
-    const rows=parseCSV(t);const headers=rows[0].map(norm);const allowed=['name','city','cuisine','rating','notes','address','url','tags','michelinstars'];
+    const rows=parseCSV(t);const headers=rows[0].map(norm);const allowed=['name','city','cuisine','rating','notes','address','url','tags','michelinstars','latitude','longitude'];
     if(headers.includes('name')) {if(headers.some(h=>!allowed.includes(h))||new Set(headers).size!==headers.length)throw Error('CSV headers must be unique: name, city, cuisine, rating, notes, address, url, tags, michelinStars.');raw=rows.slice(1).map(row=>{if(row.length>headers.length)throw Error('CSV row has more values than its header.');const obj=Object.fromEntries(headers.map((h,i)=>[h,row[i]??'']));if(obj.michelinstars!==undefined){obj.michelinStars=obj.michelinstars||0;delete obj.michelinstars;}if(obj.tags!==undefined)obj.tags=obj.tags.split(';').map(t=>t.trim()).filter(Boolean);return obj;});}
     else raw=t.split(/\r?\n/).map(name=>({name:name.trim()})).filter(r=>r.name);
   }

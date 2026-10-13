@@ -102,3 +102,10 @@ A GitHub Actions workflow checks acknowledged envelopes on its five-minute sched
 The force-pull reader uses raw GitHub files and the checked `inbox/index.json` index, avoiding unauthenticated GitHub REST API rate limits. Add each prepared delivery filename to that index. The cleanup workflow updates the index after removing acknowledged deliveries.
 
 Navigation is one horizontal row: All restaurants, local cities alphabetically, and Michelin last. On small screens the row scrolls horizontally.
+
+### Local restaurant map
+List / Map switches between compact entries and interactive rating pins. City, cuisine, search and Michelin filters work in both views. Coordinates are optional `latitude`/`longitude` fields in JSON or CSV and included in backups. New entries are looked up through Photon using only restaurant name, address and city; results are cached in local IndexedDB, sequential requests are spaced by 1.2 seconds. Only a unique exact restaurant-name and city match is placed automatically. Review unmapped offers candidates and manual coordinates for ambiguous branches or missing results. No notes or ratings leave the device. Map backgrounds use OpenStreetMap's normal interactive tile requests and browser cache, with visible attribution; map tiles are never prefetched or saved by the service worker. Map backgrounds and address lookup need internet; the notebook remains available offline.
+
+Assistant workflow: research and verify each incoming branch, include its address and coordinates in encrypted deliveries when possible. Never guess chain branches or locations. The add_restaurants tool prepares encrypted delivery; save its returned GitHub payload and index entry to queue it. Existing local notebooks cannot be remotely read or geocoded by an assistant.
+
+Mapping references: https://leafletjs.com/examples/quick-start/ ; https://operations.osmfoundation.org/policies/tiles/ ; https://github.com/komoot/photon . Vendored Leaflet 1.9.4 license: vendor/leaflet-LICENSE.txt.

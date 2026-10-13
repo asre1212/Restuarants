@@ -1,7 +1,7 @@
 // Bump this version for every changed app-shell release. Never touch IndexedDB.
 const PREFIX = 'table-notes-shell-' + self.registration.scope;
-const CACHE = PREFIX + 'v7';
-const FILES = ['./','./index.html','./style.css','./app.js','./core.js','./db.js','./manifest.webmanifest','./icons/icon.svg','./icons/icon-192.png','./icons/icon-512.png','./icons/apple-touch-icon.png'];
+const CACHE = PREFIX + 'v8';
+const FILES = ['./','./index.html','./style.css','./app.js','./map.js','./vendor/leaflet.js','./vendor/leaflet.css','./core.js','./db.js','./manifest.webmanifest','./icons/icon.svg','./icons/icon-192.png','./icons/icon-512.png','./icons/apple-touch-icon.png'];
 const URLS = FILES.map(file => new URL(file,self.registration.scope).href);
 self.addEventListener('install',event=>event.waitUntil(caches.open(CACHE).then(cache=>cache.addAll(URLS))));
 self.addEventListener('activate',event=>event.waitUntil((async()=>{const names=await caches.keys();await Promise.all(names.filter(name=>name.startsWith(PREFIX)&&name!==CACHE).map(name=>caches.delete(name)));await self.clients.claim();})()));
