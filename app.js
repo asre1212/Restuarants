@@ -1,6 +1,6 @@
 import {createRestaurantMap} from './map.js';
 import {clean,sortRestaurants,sortMichelin,tastingNotes,key,norm,parseImport,planImport,VERSION} from './core.js';
-import {openDB,all,write,setting,mergeDelivery,updateMichelin} from './db.js';
+import {openDB,all,write,setting,mergeDelivery} from './db.js';
 const $=id=>document.getElementById(id);
 const node=(tag,text,cls)=>{const n=document.createElement(tag);if(text!==undefined)n.textContent=text;if(cls)n.className=cls;return n;};
 const button=(text,action,cls)=>{const b=node('button',text,cls);b.type='button';b.addEventListener('click',action);return b;};
@@ -36,7 +36,26 @@ function render(){
  $('trash-count').textContent=rows.filter(r=>r.deletedAt).length||'';
  $('backup-notice').hidden=!active.length||!(window.backupDue??true);
 }
-function card(r,trash=false){const box=node('article',undefined,'card'),body=node('div',undefined,'card-main');if(r.assistantNew)body.append(node('span','New from assistant','tag'));body.append(node('h3',r.name),node('p',`${r.city} · ${r.cuisine}`,'meta'));if(r.notes)body.append(tastings(r.notes));if(r.address)body.append(node('p',r.address,'meta'));if(r.tags.length){const tags=node('div');r.tags.forEach(t=>tags.append(node('span',t,'tag')));body.append(tags);}if(r.url){const a=node('a','Visit website ↗');a.href=r.url;a.target='_blank';a.rel='noopener noreferrer';body.append(a);}const actions=node('div',undefined,'card-actions');if(trash)actions.append(button('Restore',async()=>{try{await write([{...r,deletedAt:null,updatedAt:new Date().toISOString()}]);await refresh();renderTrash();toast('Restaurant restored.');}catch(e){fail(e);}}));else actions.append(button('Edit',()=>edit(r)),button('Move to trash',async()=>{try{await write([{...r,deletedAt:new Date().toISOString(),updatedAt:new Date().toISOString()}]);await refresh();toast('Moved to Trash. You can restore it anytime.');}catch(e){fail(e);}}));body.append(actions);if(!trash)body.append(michelinControls(r));box.append(body);const badge=node('div',undefined,`rating-badge${r.rating==null?' unrated':''}`);if(r.rating==null){const count=tastingNotes(r.notes).items.length;badge.textContent=count?`${count} tastings`:'Unrated';}else{badge.textContent=String(r.rating);badge.append(node('small',' / 5'));}box.append(badge);return box;}
+function actionIcon(kind,label,action){
+ const b=button('',action,'listing-icon');b.setAttribute('aria-label',label);b.title=label;
+ const svg=document.createElementNS('http://www.w3.org/2000/svg','svg');svg.setAttribute('viewBox','0 0 24 24');svg.setAttribute('aria-hidden','true');
+ const path=document.createElementNS('http://www.w3.org/2000/svg','path');path.setAttribute('d',kind==='edit'?'M16 3l5 5M3 21l5-1L21 7a2 2 0 0 0-4-4L4 16z':'M3 6h18M9 6V3h6v3M5 6l1 15h12l1-15M10 10v7M14 10v7');svg.append(path);b.append(svg);return b;
+}
+let deleteId=null;
+function confirmDelete(r){deleteId=r.id;$('delete-message').textContent=`Move “${r.name}” to Trash? You can restore it later.`;$('delete-error').textContent='';$('delete-dialog').showModal();$('delete-cancel').focus();}
+$('delete-dialog').addEventListener('close',()=>{deleteId=null;});
+$('delete-confirm').onclick=async()=>{if(!deleteId)return;const id=deleteId;$('delete-confirm').disabled=true;try{const current=(await all()).find(r=>r.id===id);if(current&&!current.deletedAt)await write([{...current,deletedAt:new Date().toISOString(),updatedAt:new Date().toISOString()}]);$('delete-dialog').close();await refresh();toast('Moved to Trash. You can restore it anytime.');}catch(e){$('delete-error').textContent=e.message;}finally{$('delete-confirm').disabled=false;}};
+function card(r,trash=false){
+ const box=node('article',undefined,'card'),body=node('div',undefined,'card-main'),title=node('div',undefined,'listing-title');title.append(node('h3',r.name));
+ if(r.michelinStars>0){const mark=node('span',undefined,'michelin-badge');mark.setAttribute('aria-label',`${r.michelinStars} Michelin ${r.michelinStars===1?'star':'stars'}`);mark.title=`${r.michelinStars} Michelin ${r.michelinStars===1?'star':'stars'}`;const image=node('img');image.src='./icons/michelin-man.svg';image.alt='';image.width=36;image.height=28;mark.append(image,node('span','★'.repeat(r.michelinStars)));title.append(mark);}
+ body.append(title,node('p',`${r.city} · ${r.cuisine}`,'meta'));if(r.notes)body.append(tastings(r.notes));if(r.address)body.append(node('p',r.address,'meta'));
+ if(r.url){const a=node('a','Visit website ↗');a.href=r.url;a.target='_blank';a.rel='noopener noreferrer';body.append(a);}
+ const side=node('div',undefined,'listing-side'),actions=node('div',undefined,'card-actions');
+ if(trash)actions.append(button('Restore',async()=>{try{await write([{...r,deletedAt:null,updatedAt:new Date().toISOString()}]);await refresh();renderTrash();toast('Restaurant restored.');}catch(e){fail(e);}}));
+ else actions.append(actionIcon('edit',`Edit ${r.name}`,()=>edit(r)),actionIcon('delete',`Delete ${r.name}`,()=>confirmDelete(r)));
+ const badge=node('div',undefined,`rating-badge${r.rating==null?' unrated':''}`);if(r.rating==null){const count=tastingNotes(r.notes).items.length;badge.textContent=count?`${count} tastings`:'Unrated';}else{badge.textContent=String(r.rating);badge.append(node('small',' / 5'));}
+ side.append(actions,badge);box.append(body,side);return box;
+}
 function edit(r){$('edit-form').reset();$('edit-error').textContent='';$('edit-id').value=r?.id||'';for(const f of ['name','city','cuisine','rating','notes','address','url','latitude','longitude'])$(f).value=r?.[f]??(f==='city'?selectedCity:'');$('tags').value=(r?.tags||[]).join(', ');$('michelin-enabled').checked=(r?.michelinStars||0)>0;$('michelin-stars').value=String(r?.michelinStars||1);$('michelin-stars').disabled=!$('michelin-enabled').checked;$('editor-title').textContent=r?'Edit restaurant':'Add restaurant';$('editor').showModal();$('name').focus();}
 $('add').onclick=()=>edit();$('empty-add').onclick=()=>edit();
 $('edit-form').addEventListener('submit',async event=>{event.preventDefault();if(busy)return;try{const raw=Object.fromEntries(['name','city','cuisine','rating','notes','address','url','latitude','longitude'].map(f=>[f,$(f).value]));raw.michelinStars=$('michelin-enabled').checked?Number($('michelin-stars').value):0;raw.tags=$('tags').value.split(',').map(t=>t.trim()).filter(Boolean);const value=clean(raw),old=rows.find(r=>r.id===$('edit-id').value),now=new Date().toISOString();busy=true;$('save').disabled=true;await write([{...old,...value,id:old?.id||crypto.randomUUID(),createdAt:old?.createdAt||now,updatedAt:now}]);await refresh();$('editor').close();toast('Restaurant saved on this device.');maps.locateMissing();}catch(e){$('edit-error').textContent=e.message;}finally{busy=false;$('save').disabled=false;}});
@@ -100,14 +119,6 @@ window.addEventListener('pageshow',()=>checkInbox());
 for(const dialog of document.querySelectorAll('dialog'))dialog.addEventListener('close',()=>checkInbox());
 await checkInbox();
 
-function michelinControls(r){
- const group=node('div',undefined,'michelin-controls'),label=node('label',undefined,'check-label'),check=node('input'),select=node('select');
- check.type='checkbox';check.checked=(r.michelinStars||0)>0;check.setAttribute('aria-label',`Michelin starred: ${r.name}`);label.append(check,document.createTextNode('Michelin'));
- for(const stars of [1,2,3]){const option=node('option',`${'★'.repeat(stars)} · ${stars} ${stars===1?'star':'stars'}`);option.value=String(stars);select.append(option);}
- select.value=String(r.michelinStars||1);select.disabled=!check.checked;select.setAttribute('aria-label',`Michelin stars for ${r.name}`);
- const save=async()=>{const previous=r.michelinStars||0;check.disabled=true;select.disabled=true;try{await updateMichelin(r.id,check.checked?Number(select.value):0);await refresh();}catch(e){check.checked=previous>0;select.value=String(previous||1);fail(e);}finally{check.disabled=false;select.disabled=!check.checked;}};
- check.onchange=save;select.onchange=save;group.append(label,select);return group;
-}
 
 function tastings(notes){
  const {items,general}=tastingNotes(notes);if(!items.length)return node('p',notes);
