@@ -121,8 +121,8 @@ await checkInbox();
 
 
 function tastings(notes){
- const {items,general}=tastingNotes(notes);if(!items.length)return node('p',notes);
- const detail=node('details',undefined,'tasting-notes'),summary=node('summary',`Tasting notes · ${items.length}`);detail.append(summary);
+ const {items,general}=tastingNotes(notes);
+ const detail=node('details',undefined,'tasting-notes'),summary=node('summary',items.length?`Tasting notes · ${items.length}`:'Tasting notes');detail.append(summary);
  for(const item of items){const row=node('div',undefined,'tasting-row'),title=node('span',item.name,'tasting-name'),score=node('span',String(roundQuarter(item.rating)),'tasting-score');score.append(node('small',' / 5'));row.append(title,score);if(item.comment)row.append(node('p',item.comment,'tasting-comment'));detail.append(row);}
  if(general.length)detail.append(node('p',general.join('\n'),'tasting-general'));return detail;
 }
