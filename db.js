@@ -1,16 +1,16 @@
-import {planImport,key,roundQuarter} from './core.js';
+import {planImport,key,roundQuarter,withVisitStatus} from './core.js';
 const DATABASE = 'table-notes-local-v1';
 let db;
 export async function openDB(){return new Promise((resolve,reject)=>{const request=indexedDB.open(DATABASE,1);request.onupgradeneeded=()=>{request.result.createObjectStore('restaurants',{keyPath:'id'});request.result.createObjectStore('settings',{keyPath:'key'});};request.onsuccess=()=>{db=request.result;db.onversionchange=()=>db.close();resolve(db);};request.onerror=()=>reject(request.error);request.onblocked=()=>reject(Error('Close other Table Notes tabs, then reload.'));});}
 export function all(){return new Promise((resolve,reject)=>{const r=db.transaction('restaurants').objectStore('restaurants').getAll();r.onsuccess=()=>resolve(r.result);r.onerror=()=>reject(r.error);});}
-export function write(rows){return new Promise((resolve,reject)=>{const tx=db.transaction('restaurants','readwrite');const store=tx.objectStore('restaurants');for(const row of rows)store.put({...row,rating:roundQuarter(row.rating)});tx.oncomplete=resolve;tx.onerror=()=>reject(tx.error);tx.onabort=()=>reject(tx.error||Error('Could not save changes.'));});}
+export function write(rows){return new Promise((resolve,reject)=>{const tx=db.transaction('restaurants','readwrite');const store=tx.objectStore('restaurants');for(const row of rows)store.put(withVisitStatus({...row,rating:roundQuarter(row.rating)}));tx.oncomplete=resolve;tx.onerror=()=>reject(tx.error);tx.onabort=()=>reject(tx.error||Error('Could not save changes.'));});}
 export function setting(key,value){return new Promise((resolve,reject)=>{const tx=db.transaction('settings',value===undefined?'readonly':'readwrite');const store=tx.objectStore('settings');const r=value===undefined?store.get(key):store.put({key,value});let result;r.onsuccess=()=>{result=r.result?.value;};tx.oncomplete=()=>resolve(result);tx.onerror=()=>reject(tx.error);});}
 
 
 // Records and receipt commit together; readwrite serialization prevents cross-tab duplicates.
 export function mergeDelivery(id,incoming,updateRatings=false){return new Promise((resolve,reject)=>{
  const tx=db.transaction(['restaurants','settings'],'readwrite'),records=tx.objectStore('restaurants'),settings=tx.objectStore('settings');let count=0;
- const receipt=settings.get('delivery:'+id);receipt.onsuccess=()=>{if(receipt.result)return;const current=records.getAll();current.onsuccess=()=>{try{const plan=planImport(current.result,incoming),now=new Date().toISOString();for(const row of plan.add)records.put({...row,id:crypto.randomUUID(),createdAt:now,updatedAt:now,assistantNew:true});if(updateRatings){const ratings=new Map(incoming.map(row=>[key(row),row.rating]));for(const row of current.result)if(ratings.has(key(row)))records.put({...row,rating:ratings.get(key(row)),updatedAt:now});}count=plan.add.length;settings.put({key:'delivery:'+id,value:true});}catch{tx.abort();}};};
+ const receipt=settings.get('delivery:'+id);receipt.onsuccess=()=>{if(receipt.result)return;const current=records.getAll();current.onsuccess=()=>{try{const plan=planImport(current.result,incoming),now=new Date().toISOString();for(const row of plan.add)records.put({...row,id:crypto.randomUUID(),createdAt:now,updatedAt:now,assistantNew:true});if(updateRatings){const ratings=new Map(incoming.map(row=>[key(row),row.rating]));for(const row of current.result)if(ratings.has(key(row)))records.put(withVisitStatus({...row,rating:ratings.get(key(row)),updatedAt:now}));}count=plan.add.length;settings.put({key:'delivery:'+id,value:true});}catch{tx.abort();}};};
  tx.oncomplete=()=>resolve(count);tx.onerror=()=>reject(tx.error);tx.onabort=()=>reject(tx.error||Error('Could not save inbox entries.'));
 });}
 
@@ -32,3 +32,17 @@ export function roundStoredRatings(){return new Promise((resolve,reject)=>{
  request.onsuccess=()=>{for(const row of request.result){if(typeof row.rating!=='number'||!Number.isFinite(row.rating))continue;const rounded=roundQuarter(row.rating);if(rounded!==row.rating)store.put({...row,rating:rounded});}};
  tx.oncomplete=resolve;tx.onerror=()=>reject(tx.error);tx.onabort=()=>reject(tx.error||Error('Could not round saved ratings.'));
 });}
+
+// Reconcile every saved entry locally, including legacy imports and Trash.
+export function reconcileVisitStatus(){return new Promise((resolve,reject)=>{
+ const tx=db.transaction('restaurants','readwrite'),store=tx.objectStore('restaurants'),request=store.getAll();
+ request.onsuccess=()=>{for(const row of request.result){const next=withVisitStatus(row);if(JSON.stringify(next.tags)!==JSON.stringify(row.tags))store.put(next);}};
+ tx.oncomplete=resolve;tx.onerror=()=>reject(tx.error);tx.onabort=()=>reject(tx.error||Error('Could not update To try entries.'));
+});}
+
+export function categoryNotes(){return new Promise((resolve,reject)=>{const r=db.transaction('settings').objectStore('settings').getAll();r.onsuccess=()=>resolve(Object.fromEntries(r.result.filter(r=>r.key.startsWith('category-note:')).map(r=>[r.key.slice(14),r.value])));r.onerror=()=>reject(r.error);});}
+export function restoreCategoryNotes(notes){
+ if(notes===undefined)return Promise.resolve();
+ if(!notes||typeof notes!=='object'||Array.isArray(notes)||Object.keys(notes).length>2000||Object.entries(notes).some(([k,v])=>k.length>4000||typeof v!=='string'||v.length>20000))throw Error('Invalid category notes in backup.');
+ return new Promise((resolve,reject)=>{const tx=db.transaction('settings','readwrite'),store=tx.objectStore('settings');for(const [key,value]of Object.entries(notes)){const k='category-note:'+key,r=store.get(k);r.onsuccess=()=>{if(!r.result)store.put({key:k,value});};}tx.oncomplete=resolve;tx.onerror=()=>reject(tx.error);tx.onabort=()=>reject(tx.error);});
+}

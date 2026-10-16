@@ -2,6 +2,11 @@ export const VERSION = 1;
 export const roundQuarter = rating => rating == null ? null : Math.round(rating * 4) / 4;
 export const norm = value => String(value ?? '').normalize('NFKC').trim().toLocaleLowerCase();
 export const key = r => [r.name,r.city,r.cuisine,r.address].map(norm).join('\u0000');
+export const isToTry = row => row.rating == null;
+export function withVisitStatus(row) {
+  const tags = (row.tags || []).filter(tag => !['to try','want to try','visited'].includes(norm(tag)));
+  return {...row,tags:[...tags,isToTry(row)?'To try':'Visited']};
+}
 export function clean(input, defaults = {}) {
   if (!input || typeof input !== 'object' || Array.isArray(input)) throw Error('Each restaurant must be an object.');
   const out = {};
@@ -34,7 +39,7 @@ export function clean(input, defaults = {}) {
   out.tags = [...new Set(tags.map(t=>t.trim()).filter(Boolean))];
   if (input.deletedAt != null && (typeof input.deletedAt !== 'string' || !Number.isFinite(Date.parse(input.deletedAt)))) throw Error('Invalid trash date.');
   out.deletedAt = input.deletedAt ?? null;
-  return out;
+  return withVisitStatus(out);
 }
 export function sortRestaurants(rows, direction = 'best') {
   return [...rows].sort((a,b) => (a.rating == null) - (b.rating == null) || (a.rating != null && b.rating != null ? (direction === 'worst' ? a.rating-b.rating : b.rating-a.rating) : 0) || a.name.localeCompare(b.name,undefined,{sensitivity:'base'}));
@@ -65,7 +70,7 @@ export function planImport(existing, incoming) {
 }
 
 
-export function sortMichelin(rows){return sortRestaurants(rows.filter(r=>!r.deletedAt&&r.michelinStars>0)).sort((a,b)=>b.michelinStars-a.michelinStars);}
+export function sortMichelin(rows){return sortRestaurants(rows.filter(r=>!r.deletedAt&&r.michelinStars>0)).sort((a,b)=>Number(isToTry(a))-Number(isToTry(b))||b.michelinStars-a.michelinStars);}
 
 // Display explicit tasting scores; keep the source notes intact and never average them.
 export function tastingNotes(notes){
@@ -77,4 +82,13 @@ export function tastingNotes(notes){
   items.push({name,rating:Number(match[2]),comment});
  }
  return {items,general};
+}
+
+// Keep source cuisine names intact; derive nested headings for display.
+export function categoryTree(rows){
+ const root={children:[]};
+ for(const row of rows){const parts=row.cuisine.split(/\s*(?:·|›|>|::|,)\s*|\s+\/\s+/).filter(Boolean);let parent=root;const path=[];
+  for(const label of parts){path.push(label);let child=parent.children.find(c=>norm(c.label)===norm(label));if(!child){child={label,path:[...path],rows:[],children:[],count:0};parent.children.push(child);}child.count++;parent=child;}parent.rows.push(row);
+ }
+ const order=items=>{items.sort((a,b)=>a.label.localeCompare(b.label));for(const item of items)order(item.children);};order(root.children);return root.children;
 }

@@ -9,7 +9,7 @@ test('old records default to unstarred and only 0–3 whole stars are accepted',
 });
 test('Michelin ranking is stars descending, personal rating descending, unrated last and name ties',()=>{
  const rows=[r('Unstarred',0,5),r('One',1,5),r('Two',2,4.5),r('Three unrated',3),r('Three low',3,0),r('Three B',3,4),r('Three A',3,4),{...r('Trashed',3,5),deletedAt:'2026-10-13T00:00:00Z'}];
- assert.deepEqual(sortMichelin(rows).map(r=>r.name),['Three A','Three B','Three low','Three unrated','Two','One']);
+ assert.deepEqual(sortMichelin(rows).map(r=>r.name),['Three A','Three B','Three low','Two','One','Three unrated']);
  assert.equal(rows.length,8);
 });
 test('Michelin view uses the same record: edits, unchecking, trash and restore reflect without duplicates',()=>{
