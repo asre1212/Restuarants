@@ -33,4 +33,13 @@ const japanese=[...document.querySelectorAll('#restaurants > .category')].find(e
 const ramen=japanese.querySelector('.subcategory'),notes=ramen.querySelector('.category-notes');assert.equal(notes.open,false);const input=notes.querySelector('textarea');input.value='Best overall: try this next.';input.dispatchEvent(event('input'));await new Promise(r=>setTimeout(r,400));assert.equal(await db.setting('category-note:'+JSON.stringify(['*','Japanese','Ramen'])),input.value);assert.equal((await db.categoryNotes())[JSON.stringify(['*','Japanese','Ramen'])],input.value);
 $('sort').dispatchEvent(event('change'));await tick();assert.equal(document.querySelector('.subcategory .category-notes textarea').value,'Best overall: try this next.');assert.equal(document.querySelector('.subcategory .to-try-badge').textContent,'To try');
 await db.restoreCategoryNotes({[JSON.stringify(['NYC','Japanese','Sushi'])]:'Top favorites'});assert.equal((await db.categoryNotes())[JSON.stringify(['NYC','Japanese','Sushi'])],'Top favorites');await db.restoreCategoryNotes({[JSON.stringify(['NYC','Japanese','Sushi'])]:'Do not overwrite'});assert.equal((await db.categoryNotes())[JSON.stringify(['NYC','Japanese','Sushi'])],'Top favorites');
-console.log('PASS: local migration, To try grouping, nested categories, collapsible notes, note persistence, backup restoration, and existing app flows.');process.exit(0);
+// One click drains every GitHub page; acknowledgements follow verified local writes.
+let pulls=0,acks=0;
+globalThis.fetch=async(input,options)=>{
+ const url=String(input);
+ if(url.includes('/api/github/pull')){const page=pulls++;assert.equal(new URL(url,'https://test.example').searchParams.get('after'),page?'page-cursor-'+page+'.json':null);return {ok:true,json:async()=>({packets:Array.from({length:page===2?2:10},(_,i)=>{const n=page*10+i;return {id:'client-page-'+n,receipt:'synthetic-'+n,receiptToken:'token',packet:{format:'restaurant-log-import',version:1,restaurants:[{name:'Paged Place '+n,city:'Test City',cuisine:'Test',rating:4}]}}}),nextCursor:page<2?'page-cursor-'+(page+1)+'.json':null})};}
+ if(url.includes('/api/github/ack')){const ack=JSON.parse(options.body),n=Number(ack.id.split('-').at(-1));assert.ok((await db.all()).some(r=>r.name==='Paged Place '+n));acks++;return {ok:true,json:async()=>({acknowledged:true})};}
+ return {ok:false,status:401};
+};
+await $('github-pull').onclick();assert.equal(pulls,3);assert.equal(acks,22);assert.equal((await db.all()).filter(r=>r.name.startsWith('Paged Place ')).length,22);assert.equal($('github-pull').disabled,false);assert.ok($('inbox-status').textContent.includes('22 new restaurants saved locally'));
+console.log('PASS: paginated one-click GitHub pull verifies local saves before acknowledgements, plus existing app flows.');process.exit(0);

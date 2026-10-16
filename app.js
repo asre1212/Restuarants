@@ -148,12 +148,14 @@ function tastings(notes){
 
 $('github-pull').onclick=async()=>{
  if(checkingInbox||busy||document.querySelector('dialog[open]')){toast('Finish the open form before pulling.');return;}
- checkingInbox=true;$('github-pull').disabled=true;$('inbox-check').disabled=true;let saved=0;
+ checkingInbox=true;$('github-pull').disabled=true;$('inbox-check').disabled=true;let saved=0,totalPackets=0,cursor='';
  try{
-  const response=await fetch('./api/github/pull',{method:'POST',credentials:'same-origin',cache:'no-store'}),data=await response.json();
+  do{
+  const response=await fetch('./api/github/pull'+(cursor?'?after='+encodeURIComponent(cursor):''),{method:'POST',credentials:'same-origin',cache:'no-store'}),data=await response.json();
   if(!response.ok)throw Error(data.error||'GitHub pull failed.');
-  if(!Array.isArray(data.packets))throw Error('Invalid GitHub response.');
-  if(data.unmatched)throw Error('A list is waiting for a different ChatGPT account. Sign in with the account used in this chat.');
+  if(!Array.isArray(data.packets)||data.packets.length>20||data.nextCursor!=null&&(typeof data.nextCursor!=='string'||! /^[A-Za-z0-9_-]{8,100}\.json$/.test(data.nextCursor)||data.nextCursor<=cursor))throw Error('Invalid GitHub response.');
+  totalPackets+=data.packets.length;
+  if(data.unmatched&&!data.nextCursor&&!totalPackets)throw Error('A list is waiting for a different ChatGPT account. Sign in with the account used in this chat.');
   for(const packet of data.packets){
    const parsed=parseImport(JSON.stringify(packet.packet));if(parsed.some(r=>r.error))throw Error('Invalid GitHub entry fields.');
    saved+=await mergeDelivery('github:'+packet.id,parsed.map(r=>r.value),packet.packet.updateRatings===true);
@@ -161,8 +163,11 @@ $('github-pull').onclick=async()=>{
    const ack=await fetch('./api/github/ack',{method:'POST',credentials:'same-origin',cache:'no-store',headers:{'Content-Type':'application/json'},body:JSON.stringify({id:packet.id,receipt:packet.receipt,receiptToken:packet.receiptToken})});
    const result=await ack.json();if(!ack.ok||!result.acknowledged)throw Error(result.error||'Saved locally; GitHub acknowledgement failed. Pull again to retry.');
   }
-  await refresh();collection='all';selectedCity='';$('search').value='';render();if(data.packets.length)maps.locateMissing();
-  const message=data.packets.length?`${saved} new restaurants saved locally. Ratings updated where requested. GitHub deletion acknowledged; cleanup is scheduled.`:`No GitHub lists waiting. ${rows.filter(r=>!r.deletedAt).length} restaurants on this device.`;$('inbox-status').textContent=message;toast(message);
+  cursor=data.nextCursor||'';
+  $('inbox-status').textContent=`${saved} new restaurants saved locally · ${totalPackets} deliveries checked${cursor?' · pulling next batch…':''}`;
+  }while(cursor);
+  await refresh();collection='all';selectedCity='';$('search').value='';render();if(totalPackets)maps.locateMissing();
+  const message=totalPackets?`${saved} new restaurants saved locally. Ratings updated where requested. GitHub deletion acknowledged; cleanup is scheduled.`:`No GitHub lists waiting. ${rows.filter(r=>!r.deletedAt).length} restaurants on this device.`;$('inbox-status').textContent=message;toast(message);
  }catch(e){await refresh().catch(()=>{});$('inbox-status').textContent=e.message;toast(e.message);}
  finally{checkingInbox=false;$('github-pull').disabled=false;$('inbox-check').disabled=false;}
 };

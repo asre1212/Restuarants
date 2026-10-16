@@ -36,10 +36,14 @@ export async function githubInboxFetch(request,env){
   if(url.pathname==='/api/github/pull'){
    const listing=await githubJSON(GITHUB_ROOT+'/index.json?fresh='+Date.now());if(!listing)return json({packets:[],message:'No GitHub deliveries waiting.'});
    if(listing.format!=='restaurants-inbox-index'||listing.version!==1||!Array.isArray(listing.files))throw Error('Invalid GitHub inbox index.');
-   const files=listing.files;if(files.some(f=>typeof f!=='string'||! /^[A-Za-z0-9_-]{8,100}\.json$/.test(f)))throw Error('Invalid GitHub inbox filename.');if(files.length>20)throw Error('More than 20 GitHub deliveries. Ask your assistant to split the queue.');
+   const after=url.searchParams.get('after')||'';if(after&&! /^[A-Za-z0-9_-]{8,100}\.json$/.test(after))throw Error('Invalid GitHub delivery cursor.');
+   const files=[...new Set(listing.files)].sort();if(files.some(f=>typeof f!=='string'||! /^[A-Za-z0-9_-]{8,100}\.json$/.test(f)))throw Error('Invalid GitHub inbox filename.');
+   // A filename cursor remains stable when acknowledged files are deleted mid-pull.
+   const remaining=files.filter(file=>file>after),batch=remaining.slice(0,10);
+   const nextCursor=remaining.length>batch.length?batch.at(-1):null;
    const packets=[];
-   for(const file of files){const e=await githubJSON(GITHUB_ROOT+'/'+encodeURIComponent(file)+'?fresh='+Date.now());if(!e)continue;if(file!==e.id+'.json')throw Error('GitHub delivery ID does not match its filename.');const packet=await decodeEnvelope(request,env,e);if(packet)packets.push(packet);}
-   return json({packets,unmatched:files.length>0&&packets.length===0});
+   for(const file of batch){const e=await githubJSON(GITHUB_ROOT+'/'+encodeURIComponent(file)+'?fresh='+Date.now());if(!e)continue;if(file!==e.id+'.json')throw Error('GitHub delivery ID does not match its filename.');const packet=await decodeEnvelope(request,env,e);if(packet)packets.push(packet);}
+   return json({packets,nextCursor,remaining:Math.max(0,remaining.length-batch.length),unmatched:batch.length>0&&packets.length===0});
   }
   if(url.pathname==='/api/github/ack'){
    if(!env.BUCKET)throw Error('Receipt storage unavailable.');
