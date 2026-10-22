@@ -13,3 +13,6 @@ header{padding:23px 26px 17px}h1{font-size:2.1rem}.eyebrow{margin-bottom:5px}.in
 .to-try-section{margin-top:14px;border-top:1px dashed #c7c5ba}.to-try-heading{margin:12px 0 2px;color:var(--muted);font:600 12px/1.5 system-ui,sans-serif;letter-spacing:.06em;text-transform:uppercase}.to-try-card h3{color:#66695e}.listing-side .to-try-badge{min-width:48px;margin-top:5px;padding:4px 7px;background:#e9ece2;color:#59634c;border-radius:5px;font:600 11px/1.4 system-ui,sans-serif;white-space:nowrap}
 
 .subcategory{margin:10px 0 18px 10px;padding-left:12px;border-left:1px solid var(--line)}.subcategory>summary{font-size:1rem}.category-notes{padding:9px 0 10px;border-bottom:1px solid var(--line)}.category-notes>summary{font-size:.74rem;color:var(--accent);cursor:pointer}.category-notes label{font-size:.74rem;color:var(--muted);display:block;margin-top:10px}.category-notes textarea{display:block;width:100%;resize:vertical;margin:6px 0;min-height:88px;border:1px solid var(--line);border-radius:5px;padding:10px;background:#fffdfa}.category-notes .hint{font-size:.7rem}
+
+/* Text exports stay readable and usable on narrow phone screens. */
+.text-export-actions{flex-wrap:wrap}.text-export-actions button{min-height:44px}#text-preview{font-size:16px;white-space:pre-wrap;overflow-wrap:anywhere}#text-export-status{min-height:2.7em}

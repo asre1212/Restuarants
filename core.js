@@ -3,6 +3,55 @@ export const roundQuarter = rating => rating == null ? null : Math.round(rating 
 export const norm = value => String(value ?? '').normalize('NFKC').trim().toLocaleLowerCase();
 export const key = r => [r.name,r.city,r.cuisine,r.address].map(norm).join('\u0000');
 export const isToTry = row => row.rating == null;
+
+// A readable, device-local snapshot, not a restore format. Do not clean or round
+// here: exports retain the exact saved rating and original tasting-note text.
+export function readableNotebook(rows, categoryNotes = {}, exportedAt = new Date().toISOString()) {
+  const active = rows.filter(row => !row.deletedAt).slice().sort((a,b) =>
+    String(a.city ?? '').localeCompare(String(b.city ?? '')) ||
+    String(a.cuisine ?? '').localeCompare(String(b.cuisine ?? '')) ||
+    String(a.name ?? '').localeCompare(String(b.name ?? '')));
+  const lines = ['Restaurants — notebook export', `Exported: ${exportedAt}`,
+    `Active restaurants: ${active.length}`, `Trash excluded: ${rows.length - active.length}`,
+    'To try means no overall rating is saved. Rated entries are marked Visited.',
+    'This readable copy is not a restorable backup. Use Export backup (JSON) to restore.', ''];
+  const field = (label, value) => {
+    const text = String(value ?? '');
+    if (!text) return;
+    lines.push(`${label}:`);
+    for (const line of text.split(/\r\n|\r|\n/)) lines.push('  ' + line);
+  };
+  if (!active.length) lines.push('No active restaurants.', '');
+  for (const [index,row] of active.entries()) {
+    lines.push(`RESTAURANT ${index + 1}`);
+    field('Name', row.name || '(Unnamed restaurant)');
+    field('City', row.city || '(Not specified)');
+    field('Cuisine', row.cuisine || '(Not specified)');
+    lines.push(`Status: ${isToTry(row) ? 'To try' : 'Visited'}`,
+      `Overall rating: ${isToTry(row) ? 'Not rated' : String(row.rating) + ' / 5'}`);
+    if (row.michelinStars > 0) lines.push(`Michelin stars (saved): ${row.michelinStars}`);
+    field('Notes', row.notes);
+    field('Address', row.address);
+    field('Website', row.url);
+    if (row.latitude != null && row.longitude != null) lines.push(`Coordinates: ${row.latitude}, ${row.longitude}`);
+    if (Array.isArray(row.tags) && row.tags.length) field('Tags', row.tags.join('\n'));
+    lines.push('');
+  }
+  const notes = Object.entries(categoryNotes).filter(([,value]) => typeof value === 'string' && value.trim());
+  lines.push('CATEGORY NOTES', 'All saved category notes, including categories not currently listed.', '');
+  if (!notes.length) lines.push('No category notes.');
+  for (const [key,value] of notes.sort(([a],[b])=>a.localeCompare(b))) {
+    let path;
+    try { path = JSON.parse(key); } catch { /* Retain older/custom note keys. */ }
+    if (Array.isArray(path) && path.length > 1 && path.every(part=>typeof part==='string')) {
+      field('City', path[0] === '*' ? 'All cities' : path[0]);
+      field('Category', path.slice(1).join(' > '));
+    } else field('Category', key);
+    field('Notes', value);
+    lines.push('');
+  }
+  return lines.join('\n') + '\n';
+}
 export function withVisitStatus(row) {
   const tags = (row.tags || []).filter(tag => !['to try','want to try','visited'].includes(norm(tag)));
   return {...row,tags:[...tags,isToTry(row)?'To try':'Visited']};

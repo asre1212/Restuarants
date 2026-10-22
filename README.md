@@ -49,9 +49,16 @@ Device-only data may be removed by the OS/browser, private browsing, uninstallin
 - Review and edit every imported row before saving; invalid rows block saving unless deselected or corrected
 - Atomic merge-only imports; existing records never overwritten
 - Duplicate identity: normalized name + city + cuisine + address (including Trash)
+- Readable .txt export with native Share, Copy text, and manual-copy fallback
 - Versioned JSON backup export and restore
 - Connected assistant inbox: automatic device-local delivery imports and new-entry badges
 - Paste/file handoff remains available with local review
+
+## Share a readable notebook
+
+Choose **Export text** to export all active restaurants, regardless of the current city, cuisine, search, or Michelin filters. The preview includes each restaurant's city, cuisine, exact saved overall rating, To try / Visited status, original multiline notes (including tasting scores), Michelin count, address, website, coordinates, tags, and all saved category notes. Trash is excluded. Blank overall ratings mean To try; zero is a rated visit. No scores are calculated or rounded during export.
+
+Choose **Save .txt**, **Share**, or **Copy text**. On iPhone, Share can send the .txt file to **Save to Files** for later attachment. Where file sharing is unsupported, Share uses plain text; where clipboard access is unavailable, the preview is selected for manual copying. Canceling the share sheet leaves the notebook unchanged. The export is generated locally and never automatically uploaded. Sharing exposes the text only to the destination you choose. **Export backup** still downloads the full restorable JSON backup, including Trash and category notes. A text export does not reset the JSON-backup reminder and is not intended for re-import or restore.
 
 ## Import formats
 

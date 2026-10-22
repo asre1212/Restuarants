@@ -1,5 +1,5 @@
 import {createRestaurantMap} from './map.js';
-import {clean,isToTry,categoryTree,sortRestaurants,sortMichelin,tastingNotes,key,norm,parseImport,planImport,roundQuarter,VERSION} from './core.js';
+import {clean,isToTry,categoryTree,sortRestaurants,sortMichelin,tastingNotes,key,norm,parseImport,planImport,roundQuarter,readableNotebook,VERSION} from './core.js';
 import {openDB,all,write,setting,mergeDelivery,roundStoredRatings,reconcileVisitStatus,categoryNotes,restoreCategoryNotes} from './db.js';
 const $=id=>document.getElementById(id);
 const node=(tag,text,cls)=>{const n=document.createElement(tag);if(text!==undefined)n.textContent=text;if(cls)n.className=cls;return n;};
@@ -93,6 +93,60 @@ function renderReview(){$('review').replaceChildren();reviewRows.forEach((row,in
 $('commit-import').onclick=async()=>{if(busy)return;try{const latest=await all(),p=planImport(latest,reviewValues());busy=true;$('commit-import').disabled=true;await restoreCategoryNotes(backupNotesFromInput());const now=new Date().toISOString();await write(p.add.map(r=>({...r,id:crypto.randomUUID(),createdAt:now,updatedAt:now})));await refresh();$('importer').close();maps.locateMissing();toast(`${p.add.length} restaurants imported. ${p.duplicates} duplicates skipped.`);}catch(e){$('import-error').textContent=e.message;}finally{busy=false;$('commit-import').disabled=false;}};
 async function backup(){try{const current=await all();const data={format:'restaurant-log-backup',version:VERSION,exportedAt:new Date().toISOString(),restaurants:current,categoryNotes:await categoryNotes()};const blob=new Blob([JSON.stringify(data,null,2)],{type:'application/json'}),url=URL.createObjectURL(blob),a=node('a');a.href=url;a.download=`restaurants-backup-${new Date().toISOString().slice(0,10)}.json`;document.body.append(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),60000);await setting('lastExport',Date.now());window.backupDue=false;render();toast('Backup prepared. Save the downloaded file somewhere safe.');}catch(e){fail(e);}}
 $('export').onclick=backup;$('backup-top').onclick=backup;
+let textExport=null,textExportRequest=0,textExportBusy=false;
+function textExportControls(disabled){for(const id of ['text-save','text-share','text-copy'])$(id).disabled=disabled;}
+function selectExportText(){const input=$('text-preview');input.focus();input.select();input.setSelectionRange(0,input.value.length);}
+$('export-text').onclick=async()=>{
+ if($('text-export-dialog').open)return;
+ const request=++textExportRequest;textExport=null;textExportBusy=false;textExportControls(true);
+ $('text-preview').value='';$('text-export-status').textContent='Preparing your notebook…';
+ $('text-share').hidden=typeof navigator.share!=='function';$('text-export-dialog').showModal();
+ try{
+  const [current,notes]=await Promise.all([all(),categoryNotes()]);
+  // Include the latest category-note draft even if its debounce has not saved yet.
+  for(const [key,value]of categoryNoteDrafts)notes[key.slice('category-note:'.length)]=value;
+  const now=new Date().toISOString(),text=readableNotebook(current,notes,now),filename=`restaurants-${now.slice(0,10)}.txt`;
+  if(request!==textExportRequest||!$('text-export-dialog').open)return;
+  textExport={text,filename,blob:new Blob([text],{type:'text/plain;charset=utf-8'})};
+  $('text-preview').value=text;$('text-export-status').textContent='Ready. Save a .txt file, share it, or copy the text to paste into a chat.';textExportControls(false);
+ }catch(e){if(request===textExportRequest&&$('text-export-dialog').open)$('text-export-status').textContent='Could not prepare the export: '+e.message;}
+};
+$('text-export-dialog').addEventListener('close',()=>{++textExportRequest;textExport=null;textExportBusy=false;});
+$('text-save').onclick=()=>{
+ if(!textExport||textExportBusy)return;
+ try{
+  const url=URL.createObjectURL(textExport.blob),a=node('a');a.href=url;a.download=textExport.filename;document.body.append(a);
+  try{a.click();}finally{a.remove();setTimeout(()=>URL.revokeObjectURL(url),60000);}
+  $('text-export-status').textContent='Text file prepared. Save it to Files. If a download is unavailable, try Share or Copy text.';
+ }catch(e){$('text-export-status').textContent='Could not download. Try Share or Copy text.';}
+};
+$('text-share').onclick=async()=>{
+ if(!textExport||textExportBusy)return;
+ const request=textExportRequest,snapshot=textExport;textExportBusy=true;textExportControls(true);
+ try{
+  let data={title:'Restaurant notebook',text:snapshot.text};
+  if(typeof File==='function'&&typeof navigator.canShare==='function'){
+   const file=new File([snapshot.blob],snapshot.filename,{type:'text/plain'});
+   if(navigator.canShare({files:[file]}))data={files:[file]};
+  }
+  // Call from this click, without asynchronous preparation, for iPhone activation.
+  await navigator.share(data);
+  if(request===textExportRequest)$('text-export-status').textContent='Share sheet completed.';
+ }catch(e){if(request===textExportRequest)$('text-export-status').textContent=e.name==='AbortError'?'Sharing canceled. Your notebook is unchanged.':'Sharing is unavailable here. Try Save .txt or Copy text.';}
+ finally{if(request===textExportRequest){textExportBusy=false;textExportControls(false);}}
+};
+$('text-copy').onclick=async()=>{
+ if(!textExport||textExportBusy)return;
+ const request=textExportRequest,snapshot=textExport;textExportBusy=true;textExportControls(true);
+ try{
+  if(!navigator.clipboard?.writeText)throw Error('Clipboard unavailable');
+  await navigator.clipboard.writeText(snapshot.text);
+  if(request===textExportRequest)$('text-export-status').textContent='Copied. You can now paste your notebook into a chat.';
+ }catch{
+  if(request===textExportRequest){selectExportText();let copied=false;try{copied=document.execCommand?.('copy')===true;}catch{}
+   $('text-export-status').textContent=copied?'Copied. You can now paste your notebook into a chat.':'Text selected. Touch and hold the text, then choose Copy (or press Ctrl/Cmd+C).';}
+ }finally{if(request===textExportRequest){textExportBusy=false;textExportControls(false);}}
+};
 function renderTrash(){$('trash-list').replaceChildren();const trashed=rows.filter(r=>r.deletedAt);if(!trashed.length)$('trash-list').append(node('p','Nothing in Trash.'));trashed.forEach(r=>$('trash-list').append(card(r,true)));}
 $('trash').onclick=()=>{renderTrash();$('trash-dialog').showModal();};
 $('persist').onclick=async()=>{try{$('persist-status').textContent=navigator.storage?.persist?(await navigator.storage.persist()?'Durable storage granted. Backups are still important.':'This browser did not grant durable storage. Keep regular backups.'):'This browser does not support durable-storage requests. Keep regular backups.';}catch(e){$('persist-status').textContent='Storage request unavailable. Keep regular backups.';}};

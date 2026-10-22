@@ -9,7 +9,8 @@
     "test:dom": "node tests/dom-smoke.mjs",
     "build": "node scripts/embed-app.mjs && bash scripts/build.sh",
     "validate": "node scripts/validate-artifact.mjs",
-    "test:inbox": "node tests/inbox.test.mjs"
+    "test:inbox": "node tests/inbox.test.mjs",
+    "test:export": "node tests/text-export-dom.mjs"
   },
   "devDependencies": {
     "fake-indexeddb": "6.2.5",
