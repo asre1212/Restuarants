@@ -2,6 +2,7 @@
   "format": "restaurants-inbox-index",
   "version": 1,
   "files": [
+    "brewgarden-cleveland-20261024-bf94d2471a38.json",
     "chicago-coffee-korean-bars-fusion-20261013-2232.json",
     "cleveland-20261013-0eb1c20e5a3a4269.json",
     "cleveland-asian-brunch-20261013-2217.json",
@@ -23,7 +24,6 @@
     "nyc-italian-20261013-1734.json",
     "nyc-japanese-thai-20261016-0816.json",
     "nyc-sweets-croissants-20261014-1312.json",
-    "nyc-vietnamese-matcha-20261016-0803.json",
-    "brewgarden-cleveland-20261024-bf94d2471a38.json"
+    "nyc-vietnamese-matcha-20261016-0803.json"
   ]
 }
