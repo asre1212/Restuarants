@@ -43,9 +43,12 @@ assert.equal(JSON.stringify(await all()),original);
 // Starting a new pass revisits skipped entries; selecting and editing still target the right row.
 $('map-locate').click();await until(()=>pending.length===5);assert.equal($('location-title').textContent,'Locate Place A');
 answer(pending[4],'Place A');await until(()=>$('location-results').textContent.includes('Use this location'));
-$('location-results').querySelector('.location-choice button').click();await until(()=>!dialog.open&&rows.find(r=>r.id==='A').latitude===1);
+let closeCount=0;dialog.addEventListener('close',()=>closeCount++);
+const useA=$('location-results').querySelector('.location-choice button');useA.click();useA.click();
+await until(()=>$('location-title').textContent==='Locate Place B'&&rows.find(r=>r.id==='A').latitude===1);
+assert.equal(dialog.open,true);assert.equal(closeCount,0);
 assert.equal((await all()).find(r=>r.id==='B').latitude,undefined);
-$('map-locate').click();await until(()=>$('location-results').textContent.includes('Use this location'));
+await until(()=>$('location-results').textContent.includes('Use this location'));
 assert.equal($('location-title').textContent,'Locate Place B');$('location-edit').click();assert.equal(edited.id,'B');assert.equal(dialog.open,false);
 
 // Closing during a pending lookup never repaints or reopens the dialog.
@@ -53,4 +56,20 @@ $('map-locate').click();await until(()=>$('location-results').textContent.includ
 $('location-results').querySelector(':scope > button').click();await until(()=>pending.length===6);
 dialog.close();answer(pending[5],'Closed request');await new Promise(r=>setTimeout(r,15));
 assert.equal(dialog.open,false);assert.ok(!$('location-results').textContent.includes('Closed request'));
-console.log('PASS: unmapped skip advances without writes; exhaustion, revisit, stale lookups, selection and editing remain correct.');
+
+// Saving after a skip finishes this pass instead of circling back to the skipped row.
+$('map-locate').click();await until(()=>$('location-results').textContent.includes('Use this location'));
+$('location-skip').click();await until(()=>$('location-title').textContent==='Locate Place C'&&$('location-results').querySelector(':scope > button'));
+$('location-results').querySelector(':scope > button').click();await until(()=>pending.length===7);
+answer(pending[6],'Place C');await until(()=>$('location-results').textContent.includes('Use this location'));
+$('location-results').querySelector('.location-choice button').click();await until(()=>!dialog.open);
+assert.equal(rows.find(r=>r.id==='C').latitude,1);assert.equal(rows.find(r=>r.id==='B').latitude,undefined);
+assert.ok($('map-status').textContent.includes('1 skipped for now'));
+
+// A fresh pass can resolve the skipped row and report completion.
+$('map-locate').click();await until(()=>$('location-results').textContent.includes('Use this location'));
+assert.equal($('location-title').textContent,'Locate Place B');
+$('location-results').querySelector('.location-choice button').click();await until(()=>!dialog.open);
+assert.equal($('map-status').textContent,'All saved restaurants are mapped.');
+for(const r of rows.filter(r=>['A','B','C'].includes(r.id))){assert.equal(r.notes,'Keep my notes');assert.equal(r.rating,null);assert.equal(r.latitude,1);}
+console.log('PASS: save advances without closing or revisiting skipped places; repeated taps, exhaustion, stale lookups and editing remain correct.');

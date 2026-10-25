@@ -26,12 +26,19 @@ export function createRestaurantMap({getRows,onChange,onEdit,onError}){
  async function locateMissing(){if(looking){requested=true;return;}if(!navigator.onLine)return;looking=true;try{for(const r of getRows().filter(r=>!r.deletedAt&&!hasLocation(r))){const matches=await lookup(r),match=exactMatch(r,matches);if(match){await updateLocation(r.id,match.latitude,match.longitude,r);await onChange();}await new Promise(resolve=>setTimeout(resolve,1200));}}catch(e){onError(e);}finally{looking=false;if(requested){requested=false;locateMissing();}}}
  async function review(r,retry=false){
   reviewId=r.id;const version=++reviewVersion,current=()=>version===reviewVersion&&reviewId===r.id&&$('location-dialog').open;
+  let saving=false;
   $('location-title').textContent='Locate '+r.name;$('location-results').replaceChildren();$('location-error').textContent='Looking up location…';
   if(!$('location-dialog').open)$('location-dialog').showModal();
   try{
    const matches=await lookup(r,retry);if(!current())return;
    $('location-error').textContent=matches.length?'Check the address before choosing a branch.':'No match found. Enter a more specific address or coordinates.';
-   for(const m of matches){const box=document.createElement('div');box.className='location-choice';box.append(text('strong',m.name||r.name),text('p',m.address),btn('Use this location',async()=>{if(!current())return;try{await updateLocation(r.id,m.latitude,m.longitude);if(current())$('location-dialog').close();await onChange();}catch(e){onError(e);}}));$('location-results').append(box);}
+   for(const m of matches){const box=document.createElement('div');box.className='location-choice';box.append(text('strong',m.name||r.name),text('p',m.address),btn('Use this location',async()=>{
+    if(!current()||saving)return;saving=true;
+    for(const b of $('location-results').querySelectorAll('button'))b.disabled=true;
+    $('location-error').textContent='Saving location…';
+    try{await updateLocation(r.id,m.latitude,m.longitude);await onChange();if(current())nextReview();}
+    catch(e){if(current()){saving=false;$('location-error').textContent=e.message;for(const b of $('location-results').querySelectorAll('button'))b.disabled=false;}onError(e);}
+   }));$('location-results').append(box);}
    $('location-results').append(btn('Retry lookup',()=>{if(current())review(r,true);}));
   }catch(e){if(current())$('location-error').textContent=e.message;}
  }
