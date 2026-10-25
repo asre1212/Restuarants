@@ -1,0 +1,9 @@
+{
+  "format": "restaurants-encrypted-inbox",
+  "version": 1,
+  "id": "brewgarden-cleveland-20261024-bf94d2471a38",
+  "recipient": "ca950a02d5721b8fa7048e71737dbd78cb97387971da215d77eacdd8e9b3fc4f",
+  "expiresAt": 1793492750684,
+  "iv": "PF0yCrTgPMTFnCm5",
+  "ciphertext": "UbAmo7YQE1THtZd2hgfbrgyGQ1gPRZ+jyOU3griU/7hgJ0YOaawfaYZb7DjV3dC/5bHHW4TXcXS1MvmM/y8yF23OHGvmIClN3+dr6zfv/JMmzLTVQzw6Co2/H3ex16pDiK+gFgQ5EvanZVsjQZtWUBvyXsYeOqaSDqlNQkF9zzZcwF2tuYYiXvGeQguRCRptpjG6bF3RgAuHhd2rT812xQ7P4J/Ax2YsUHT2tGJ0qP+s3gaTF9+oAW5SdVlm9d1W5viK877RmD0vRGq+cs5QrYtK9bqnlaTFwX1Ua4vbnqo+99LzbVI4yKQ4WfGz9ebnTUmKTnEB8psrhY5g/ropan1GYzg2FaOQvAMo8lZ3mjzTqI6hQ3RZ0GtxCmYVejAy/sKwQUpD+8kLTAZH52JXppYOHp43NBzWZDqfZooVSNJM7EAXucaZCTv88xIoIDcfV3/kczcC4JTO+IOzWWu5ruUqEHIOW2zL+HeiACii0vEP2dc08ee5Qq4UI0O1"
+}
