@@ -120,3 +120,33 @@ Mapping references: https://leafletjs.com/examples/quick-start/ ; https://operat
 Listing presentation: Michelin selection appears only in the restaurant editor. Saved listings show one, two, or three copies of the requested red Michelin star rosette supplied by the user next to the name, matching the saved Michelin star count. One, two, or three rosettes represent the saved Michelin star count. The transparent source image is used unchanged. Tags remain stored and searchable but are hidden from compact listings. Pencil / trash icons sit beside the personal rating; Trash requires confirmation and can be undone through Restore.
 
 Ratings are rounded to the nearest quarter point (0.25). Explicit overall ratings round after validation; requested averages use original rated items, then round the mean. Existing overall scores round locally in a single IndexedDB transaction on launch, preserving notes, Michelin counts, map coordinates, and Trash. Tasting scores display quarter points while original notes retain their entered precision. New imports and encrypted deliveries round overall ratings through the shared validator.
+
+### Expired-delivery recovery
+Expired envelopes no longer abort a batch containing fresh deliveries. Previously acknowledged envelopes are skipped. The October 24, 2026 owner-requested recovery is restricted to the exact IDs, recipient hashes and ciphertext hashes in `worker/expired-recovery.json`, until November 1, 2026 00:30 UTC. Recovery preserves original delivery IDs and disables old rating updates. Device receipts prevent reimport of renamed or trashed entries; existing matching records are never overwritten. No notebook data is uploaded and unacknowledged files are retained. Other expired deliveries remain skipped, while malformed or tampered fresh deliveries still fail visibly.
+
+
+## Modern notebook redesign — October 2026
+
+The visual update keeps the existing hosted origin, app identity, IndexedDB database, imports, exports, Michelin stars, category notes, map, and assistant inbox behavior. No restaurant data is shipped with the app. Open **Tools** in the bottom navigation or the top menu for Force pull list, imports, backups, text export, Trash, and installation help. The app-shell cache advances to v19; an installed app offers **Update app** without clearing its notebook.
+
+The account's 34 repositories were inventoried. The main design references were:
+
+| Reference | Applied to Restaurants |
+| --- | --- |
+| [Wine](https://github.com/asre1212/wine/blob/main/style.css) | Warm paper surfaces, serif hierarchy, fine rules |
+| [Matcha](https://github.com/asre1212/matcha/blob/main/index.html) | Calm spacing, understated navigation and form treatment |
+| [Hotel](https://github.com/asre1212/hotel/blob/main/index.html) | Compact masthead and editorial restaurant titles |
+| [Hiking Trails](https://github.com/asre1212/Hiking-Trails/blob/main/dist/style.css) | Forest-green accents and clear list/map controls |
+| [Lifting](https://github.com/asre1212/Lifting/blob/main/index.html) | Persistent, thumb-accessible bottom navigation |
+
+Verified with the existing unit, DOM, export, inbox, pagination, expiry-recovery, and service-worker checks. Browser inspection covered desktop and 390/320-pixel layouts with synthetic preview-only records, tools-to-export navigation, nested cuisine groups and rating badges. The managed HTTP preview cannot exercise secure-context APIs such as `crypto.randomUUID` or installed-PWA updates; add/import persistence is covered by the DOM suite. Physical iPhone/Safari and installed-app upgrade testing remain manual.
+
+Online restaurant-app references were also reviewed:
+
+| Reference | Applied pattern |
+| --- | --- |
+| [Beli](https://beliapp.com/) | Distinct numerical rating badges, ranked lists, and quick Visited / To try filters |
+| [Mapstr](https://en.mapstr.com/) | Saved-place collections and consistent filters across list and map |
+| [The Infatuation](https://www.theinfatuation.com/mobile-apps) | Prominent search, cuisine filtering, and a clear list/map switch |
+
+The visit filters use the notebook's existing classification: a saved rating, including zero, is Visited; an unrated entry is To try. They combine with city, cuisine, search, and Michelin filters without changing records. No third-party branding, photos, or screenshots are bundled.

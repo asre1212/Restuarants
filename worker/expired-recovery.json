@@ -1,0 +1,115 @@
+{
+  "authorizedUntil": 1793493000000,
+  "deliveries": [
+    {
+      "id": "chicago-coffee-korean-bars-fusion-20261013-2232",
+      "recipient": "ca950a02d5721b8fa7048e71737dbd78cb97387971da215d77eacdd8e9b3fc4f",
+      "receipt": "521d123f84ee70adca4030e73c9d0e8f5131c643c2de3c60b50a0f6319d89078"
+    },
+    {
+      "id": "cleveland-20261013-0eb1c20e5a3a4269",
+      "recipient": "ca950a02d5721b8fa7048e71737dbd78cb97387971da215d77eacdd8e9b3fc4f",
+      "receipt": "b50005375a7073e71ae73a8fd64925227a297d0f99e10fb7bb21576abc353f43"
+    },
+    {
+      "id": "cleveland-asian-brunch-20261013-2217",
+      "recipient": "ca950a02d5721b8fa7048e71737dbd78cb97387971da215d77eacdd8e9b3fc4f",
+      "receipt": "edb97783a13abeb78061c7d1f6ff614e144fa5e0c4a8792003ca4dce5d5f7957"
+    },
+    {
+      "id": "cleveland-bagel-burger-20261013-2216",
+      "recipient": "ca950a02d5721b8fa7048e71737dbd78cb97387971da215d77eacdd8e9b3fc4f",
+      "receipt": "632771cc418679b0d6ed83b943327ea267029645ed95026149bf9e97f1a0e662"
+    },
+    {
+      "id": "cleveland-bars-20261013-2218",
+      "recipient": "ca950a02d5721b8fa7048e71737dbd78cb97387971da215d77eacdd8e9b3fc4f",
+      "receipt": "79284593effdf529066dad278baaf01f9f1710285d67885b510f7e69458a464e"
+    },
+    {
+      "id": "cleveland-chinese-20261013-2219",
+      "recipient": "ca950a02d5721b8fa7048e71737dbd78cb97387971da215d77eacdd8e9b3fc4f",
+      "receipt": "d835c43774c8e15760aac8111edf1de58295fc6780ccbb9f8efe8e98e60bc642"
+    },
+    {
+      "id": "cleveland-french-greek-indian-italian-20261013-2221",
+      "recipient": "ca950a02d5721b8fa7048e71737dbd78cb97387971da215d77eacdd8e9b3fc4f",
+      "receipt": "23548ab5261208b79a578f7b53d407b6313e1c0b9cf884cd5fde88b2ca750576"
+    },
+    {
+      "id": "france-monaco-eze-20261013-2246",
+      "recipient": "ca950a02d5721b8fa7048e71737dbd78cb97387971da215d77eacdd8e9b3fc4f",
+      "receipt": "4b518ebb6887d4ee815587c9383af5c130db9dc7a30c7010baa1de7c941da317"
+    },
+    {
+      "id": "london-dinner-tea-20261014-0801",
+      "recipient": "ca950a02d5721b8fa7048e71737dbd78cb97387971da215d77eacdd8e9b3fc4f",
+      "receipt": "a42e3a48d1b319837ea4b46b1d3cf36f9d3bfe6773ef69e26c0c92559585dbad"
+    },
+    {
+      "id": "napa-dinner-bakery-20261014-0752",
+      "recipient": "ca950a02d5721b8fa7048e71737dbd78cb97387971da215d77eacdd8e9b3fc4f",
+      "receipt": "8ef531d0482a50a0db4fdbbd26481e1e28c9b04f340859d993fbc288619ea855"
+    },
+    {
+      "id": "napa-sanfrancisco-20261014-0755",
+      "recipient": "ca950a02d5721b8fa7048e71737dbd78cb97387971da215d77eacdd8e9b3fc4f",
+      "receipt": "4eebe3365177f55993d7ff671a66a0ff0e0f88ab7c1a6a15636e2c059db28f24"
+    },
+    {
+      "id": "nyc-american-brunch-coffee-bagel-20261014-1306",
+      "recipient": "ca950a02d5721b8fa7048e71737dbd78cb97387971da215d77eacdd8e9b3fc4f",
+      "receipt": "21d96195d22e97d3f9b34b341d0ca2ca90c13fc81691ca5bd3118a91ce3cef70"
+    },
+    {
+      "id": "nyc-bars-20261013-1852",
+      "recipient": "ca950a02d5721b8fa7048e71737dbd78cb97387971da215d77eacdd8e9b3fc4f",
+      "receipt": "1f3ea7eefdc84dcfb3e41a48f498cd1c3ff0da882f7e49045884d4d57c3a45be"
+    },
+    {
+      "id": "nyc-burgers-20261013-1526",
+      "recipient": "ca950a02d5721b8fa7048e71737dbd78cb97387971da215d77eacdd8e9b3fc4f",
+      "receipt": "f14b85a8cdddc75780781b02140573bd7200c414dedfeb05489adedab552569b"
+    },
+    {
+      "id": "nyc-cambodian-asianfusion-20261013-1849",
+      "recipient": "ca950a02d5721b8fa7048e71737dbd78cb97387971da215d77eacdd8e9b3fc4f",
+      "receipt": "607e66d5ee24c048ce3d87ca98caaeda203e1c0c45ce62bb17b3943cad843660"
+    },
+    {
+      "id": "nyc-coffee-steakhouse-croissants-20261016-0805",
+      "recipient": "ca950a02d5721b8fa7048e71737dbd78cb97387971da215d77eacdd8e9b3fc4f",
+      "receipt": "6d215cf7897c943bbcc885d36d1c26327a5082348eb030ded9e820ceac9a4a6b"
+    },
+    {
+      "id": "nyc-french-20261013-1538",
+      "recipient": "ca950a02d5721b8fa7048e71737dbd78cb97387971da215d77eacdd8e9b3fc4f",
+      "receipt": "48f56ee968efc9a96b4d425bd7439203ca1cc4b4480abdfed2d1c4dc847c1b5a"
+    },
+    {
+      "id": "nyc-indian-20261013-1559",
+      "recipient": "ca950a02d5721b8fa7048e71737dbd78cb97387971da215d77eacdd8e9b3fc4f",
+      "receipt": "8896648ee2e0e7c4fd0ddee94ee49f0318bf7807c61c77e0ebeb02cf5d946a8d"
+    },
+    {
+      "id": "nyc-italian-20261013-1734",
+      "recipient": "ca950a02d5721b8fa7048e71737dbd78cb97387971da215d77eacdd8e9b3fc4f",
+      "receipt": "74172bc2f76063ea06bf6cf5cf00c09a80fd6422f320f93e8c8270134281901e"
+    },
+    {
+      "id": "nyc-japanese-thai-20261016-0816",
+      "recipient": "ca950a02d5721b8fa7048e71737dbd78cb97387971da215d77eacdd8e9b3fc4f",
+      "receipt": "1e60d3632237fc19769f6ac784ebc53e18187a934f131c360e7650fc5fc45cdf"
+    },
+    {
+      "id": "nyc-sweets-croissants-20261014-1312",
+      "recipient": "ca950a02d5721b8fa7048e71737dbd78cb97387971da215d77eacdd8e9b3fc4f",
+      "receipt": "2421fe7e95c75565fc0a7662c69d32ea87cb278aeb51935665288a4929d59400"
+    },
+    {
+      "id": "nyc-vietnamese-matcha-20261016-0803",
+      "recipient": "ca950a02d5721b8fa7048e71737dbd78cb97387971da215d77eacdd8e9b3fc4f",
+      "receipt": "1020dd179cc673e0a83442a267e6def85aa18a7f625a0d4453707e6b1b9a07d6"
+    }
+  ]
+}

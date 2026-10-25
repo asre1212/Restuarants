@@ -10,10 +10,16 @@ async function receiptToken(env,id,recipient,receipt){const key=await crypto.sub
 async function decodeEnvelope(request,env,e){
  if(e?.format!=='restaurants-encrypted-inbox'||e.version!==1||!/^[A-Za-z0-9_-]{8,100}$/.test(e.id||'')||typeof e.ciphertext!=='string'||e.ciphertext.length>700000||typeof e.iv!=='string'||!Number.isFinite(e.expiresAt))throw Error('Invalid GitHub delivery.');
  if(e.recipient!==await recipientFor(request))return null;
- if(e.expiresAt<=Date.now())throw Error('GitHub delivery expired. Ask your assistant to resend it.');
+ const receipt=await digestHex(e.ciphertext);
+ if(await env.BUCKET?.get('github-receipt/'+receipt))return {skipped:'acknowledged'};
+ const expired=e.expiresAt<=Date.now();
+ // One bounded owner-requested recovery, pinned to the original ciphertext and recipient.
+ const recoverable=expired&&Date.now()<EXPIRED_RECOVERY.authorizedUntil&&EXPIRED_RECOVERY.deliveries.some(d=>d.id===e.id&&d.recipient===e.recipient&&d.receipt===receipt);
+ if(expired&&!recoverable)return {skipped:'expired'};
  const clear=await crypto.subtle.decrypt({name:'AES-GCM',iv:from64(e.iv),additionalData:envelopeAAD(e)},await encryptionKey(env),from64(e.ciphertext));
  const packet=JSON.parse(new TextDecoder().decode(clear));const parsed=parseImport(JSON.stringify(packet));if(parsed.some(r=>r.error))throw Error('GitHub delivery has invalid restaurant fields.');
- const receipt=await digestHex(e.ciphertext);return {id:e.id,packet,receipt,receiptToken:await receiptToken(env,e.id,e.recipient,receipt)};
+ if(recoverable)packet.updateRatings=false;
+ return {id:e.id,packet,receipt,recoveredExpired:recoverable,receiptToken:await receiptToken(env,e.id,e.recipient,receipt)};
 }
 export async function prepareGitHubDelivery(request,env,args){
  if(!/^[A-Za-z0-9_-]{8,100}$/.test(args.delivery_id||''))throw Error('Provide a stable delivery_id of 8–100 characters.');
@@ -41,9 +47,9 @@ export async function githubInboxFetch(request,env){
    // A filename cursor remains stable when acknowledged files are deleted mid-pull.
    const remaining=files.filter(file=>file>after),batch=remaining.slice(0,10);
    const nextCursor=remaining.length>batch.length?batch.at(-1):null;
-   const packets=[];
-   for(const file of batch){const e=await githubJSON(GITHUB_ROOT+'/'+encodeURIComponent(file)+'?fresh='+Date.now());if(!e)continue;if(file!==e.id+'.json')throw Error('GitHub delivery ID does not match its filename.');const packet=await decodeEnvelope(request,env,e);if(packet)packets.push(packet);}
-   return json({packets,nextCursor,remaining:Math.max(0,remaining.length-batch.length),unmatched:batch.length>0&&packets.length===0});
+   const packets=[];let skippedExpired=0,skippedAcknowledged=0,unmatchedCount=0;
+   for(const file of batch){const e=await githubJSON(GITHUB_ROOT+'/'+encodeURIComponent(file)+'?fresh='+Date.now());if(!e)continue;if(file!==e.id+'.json')throw Error('GitHub delivery ID does not match its filename.');const packet=await decodeEnvelope(request,env,e);if(packet?.skipped==='expired')skippedExpired++;else if(packet?.skipped==='acknowledged')skippedAcknowledged++;else if(packet)packets.push(packet);else unmatchedCount++;}
+   return json({packets,nextCursor,remaining:Math.max(0,remaining.length-batch.length),skippedExpired,skippedAcknowledged,unmatched:unmatchedCount>0&&packets.length===0&&skippedExpired===0&&skippedAcknowledged===0});
   }
   if(url.pathname==='/api/github/ack'){
    if(!env.BUCKET)throw Error('Receipt storage unavailable.');

@@ -5,11 +5,20 @@ const $=id=>document.getElementById(id);
 const node=(tag,text,cls)=>{const n=document.createElement(tag);if(text!==undefined)n.textContent=text;if(cls)n.className=cls;return n;};
 const button=(text,action,cls)=>{const b=node('button',text,cls);b.type='button';b.addEventListener('click',action);return b;};
 const categoryNoteDrafts=new Map();
-let collection='all',view='list';
+let collection='all',view='list',visitFilter='all';
 const maps=createRestaurantMap({getRows:()=>rows,onChange:()=>refresh(),onEdit:r=>edit(r),onError:fail});
 $('view-list').onclick=()=>{view='list';render();};
 $('view-map').onclick=()=>{view='map';render();maps.locateMissing();};
 $('map-cuisine').onchange=render;
+for(const b of document.querySelectorAll('[data-visit]'))b.onclick=()=>{visitFilter=b.dataset.visit;render();};
+const openTools=()=>{$('tools-dialog').showModal();};
+$('top-tools').onclick=openTools;$('dock-tools').onclick=openTools;
+$('dock-add').onclick=()=>edit();
+// Close the tools sheet before the original action runs (including inbox guards).
+$('tools-dialog').addEventListener('click',event=>{
+ if(event.target.closest('.tools button'))$('tools-dialog').close();
+},true);
+
 let rows=[],selectedCity='',reviewRows=[],waitingWorker=null,busy=false,toastTimer;
 function toast(text){$('status').textContent=text;$('status').hidden=false;clearTimeout(toastTimer);toastTimer=setTimeout(()=>$('status').hidden=true,6000);}
 function fail(error){console.error(error);toast('Could not finish: '+error.message);}
@@ -18,17 +27,24 @@ function render(){
  const focused=document.activeElement,focusKey=focused?.dataset?.categoryNote,selection=focusKey?[focused.selectionStart,focused.selectionEnd]:null,openNotes=new Set([...document.querySelectorAll('.category-notes[open]')].map(el=>el.dataset.noteKey));
  const active=rows.filter(r=>!r.deletedAt),cities=[...new Set(active.map(r=>r.city))].sort((a,b)=>a.localeCompare(b));
  if(selectedCity&&!cities.includes(selectedCity))selectedCity='';
+ $('collection-summary').textContent=active.length?`${active.length} ${active.length===1?'place':'places'} · ${cities.length} ${cities.length===1?'city':'cities'}`:'Your next favorite starts here';
+ document.body.dataset.view=view;
+
  $('cities').replaceChildren();for(const [index,city] of cities.entries()){const b=button(city,()=>{collection='all';selectedCity=city;render();});b.id='city-tab-'+index;b.setAttribute('role','tab');b.setAttribute('aria-controls','restaurants');b.setAttribute('aria-selected',String(collection==='all'&&city===selectedCity));$('cities').append(b);}
  for(const [id,values]of [['city-options',cities],['cuisine-options',[...new Set(active.map(r=>r.cuisine))].sort()]]){$(id).replaceChildren(...values.map(v=>{const o=node('option');o.value=v;return o;}));}
  const q=norm($('search').value);let found=active.filter(r=>(!selectedCity||r.city===selectedCity)&&(!q||norm([r.name,r.city,r.cuisine,r.notes,r.address,...r.tags].join(' ')).includes(q)));
  const cuisine=$('map-cuisine').value;const cuisines=[...new Set(active.map(r=>r.cuisine))].sort((a,b)=>a.localeCompare(b));$('map-cuisine').replaceChildren(...['',...cuisines].map(c=>{const o=node('option',c||'All cuisines');o.value=c;return o;}));$('map-cuisine').value=cuisines.includes(cuisine)?cuisine:'';if(cuisine)found=found.filter(r=>r.cuisine===cuisine);
  if(collection==='michelin')found=sortMichelin(active.filter(r=>!q||norm([r.name,r.city,r.cuisine,r.notes,r.address,...r.tags].join(' ')).includes(q)));
  if(collection==='michelin'&&cuisine)found=found.filter(r=>r.cuisine===cuisine);
+ const pendingCount=found.filter(isToTry).length;
+ for(const b of document.querySelectorAll('[data-visit]')){const status=b.dataset.visit;b.setAttribute('aria-pressed',String(visitFilter===status));b.querySelector('span').textContent=status==='all'?found.length:status==='to-try'?pendingCount:found.length-pendingCount;}
+ $('visit-filters').hidden=!active.length;
+ if(visitFilter!=='all')found=found.filter(r=>visitFilter==='to-try'?isToTry(r):!isToTry(r));
  $('sort').disabled=collection==='michelin';$('sort').parentElement.hidden=collection==='michelin';
  $('tab-all').setAttribute('aria-selected',String(collection==='all'&&!selectedCity));$('tab-michelin').setAttribute('aria-selected',String(collection==='michelin'));$('michelin-count').textContent=active.filter(r=>r.michelinStars>0).length||'';$('restaurants').setAttribute('aria-labelledby',collection==='michelin'?'tab-michelin':selectedCity?'city-tab-'+cities.indexOf(selectedCity):'tab-all');
  $('city-heading').textContent=collection==='michelin'?'Michelin · stars, then your rating':selectedCity||'Your collection';$('count').textContent=`${found.length} ${found.length===1?'restaurant':'restaurants'}`;
  $('empty').hidden=active.length>0||collection==='michelin'||view==='map';$('restaurants').replaceChildren();
- if((active.length||collection==='michelin')&&!found.length)$('restaurants').append(node('p',collection==='michelin'?'No starred restaurants here yet. Mark Michelin entries in All restaurants.':'No restaurants match. Try another city or search.','hint'));
+ if((active.length||collection==='michelin')&&!found.length)$('restaurants').append(node('p','No restaurants match. Try another city, cuisine, visit filter, or search.','hint'));
  $('restaurants').hidden=view==='map';$('map-section').hidden=view!=='map';$('view-list').setAttribute('aria-pressed',String(view==='list'));$('view-map').setAttribute('aria-pressed',String(view==='map'));if(view==='map')maps.render(found);
  if(collection==='michelin'){appendListings($('restaurants'),found);}
  else {for(const group of categoryTree(found))$('restaurants').append(categorySection(group));}
@@ -72,7 +88,7 @@ function card(r,trash=false){
  if(trash)actions.append(button('Restore',async()=>{try{await write([{...r,deletedAt:null,updatedAt:new Date().toISOString()}]);await refresh();renderTrash();toast('Restaurant restored.');}catch(e){fail(e);}}));
  else actions.append(actionIcon('edit',`Edit ${r.name}`,()=>edit(r)),actionIcon('delete',`Delete ${r.name}`,()=>confirmDelete(r)));
  const badge=node('div',undefined,`rating-badge${r.rating==null?' unrated':''}`);if(r.rating==null){badge.textContent='To try';badge.classList.add('to-try-badge');}else{badge.textContent=String(r.rating);badge.append(node('small',' / 5'));}
- side.append(actions,badge);box.append(body,side);return box;
+ badge.dataset.tone=r.rating==null?'unrated':r.rating>=4?'high':r.rating>=3?'mid':'low';side.append(badge,actions);box.append(body,side);return box;
 }
 function edit(r){$('edit-form').reset();$('edit-error').textContent='';$('edit-id').value=r?.id||'';for(const f of ['name','city','cuisine','rating','notes','address','url','latitude','longitude'])$(f).value=r?.[f]??(f==='city'?selectedCity:'');$('tags').value=(r?.tags||[]).join(', ');$('michelin-enabled').checked=(r?.michelinStars||0)>0;$('michelin-stars').value=String(r?.michelinStars||1);$('michelin-stars').disabled=!$('michelin-enabled').checked;$('editor-title').textContent=r?'Edit restaurant':'Add restaurant';$('editor').showModal();$('name').focus();}
 $('add').onclick=()=>edit();$('empty-add').onclick=()=>edit();
@@ -189,7 +205,7 @@ $('inbox-check').onclick=checkInbox;
 $('assistant-mark-seen').onclick=async()=>{try{await write(rows.filter(r=>r.assistantNew).map(r=>({...r,assistantNew:false})));await refresh();}catch(e){fail(e);}};
 document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='visible')checkInbox();});
 window.addEventListener('pageshow',()=>checkInbox());
-for(const dialog of document.querySelectorAll('dialog'))dialog.addEventListener('close',()=>checkInbox());
+for(const dialog of document.querySelectorAll('dialog'))if(dialog.id!=='tools-dialog')dialog.addEventListener('close',()=>checkInbox());
 await checkInbox();
 
 
@@ -202,26 +218,30 @@ function tastings(notes){
 
 $('github-pull').onclick=async()=>{
  if(checkingInbox||busy||document.querySelector('dialog[open]')){toast('Finish the open form before pulling.');return;}
- checkingInbox=true;$('github-pull').disabled=true;$('inbox-check').disabled=true;let saved=0,totalPackets=0,cursor='';
+ checkingInbox=true;$('github-pull').disabled=true;$('inbox-check').disabled=true;let saved=0,totalPackets=0,skippedExpired=0,skippedAcknowledged=0,recoveredExpired=0,cursor='';
  try{
   do{
   const response=await fetch('./api/github/pull'+(cursor?'?after='+encodeURIComponent(cursor):''),{method:'POST',credentials:'same-origin',cache:'no-store'}),data=await response.json();
   if(!response.ok)throw Error(data.error||'GitHub pull failed.');
   if(!Array.isArray(data.packets)||data.packets.length>20||data.nextCursor!=null&&(typeof data.nextCursor!=='string'||! /^[A-Za-z0-9_-]{8,100}\.json$/.test(data.nextCursor)||data.nextCursor<=cursor))throw Error('Invalid GitHub response.');
-  totalPackets+=data.packets.length;
+  totalPackets+=data.packets.length;skippedExpired+=data.skippedExpired||0;skippedAcknowledged+=data.skippedAcknowledged||0;
   if(data.unmatched&&!data.nextCursor&&!totalPackets)throw Error('A list is waiting for a different ChatGPT account. Sign in with the account used in this chat.');
   for(const packet of data.packets){
    const parsed=parseImport(JSON.stringify(packet.packet));if(parsed.some(r=>r.error))throw Error('Invalid GitHub entry fields.');
-   saved+=await mergeDelivery('github:'+packet.id,parsed.map(r=>r.value),packet.packet.updateRatings===true);
-   const verified=new Set((await all()).map(key));if(parsed.some(r=>!verified.has(key(r.value))))throw Error('Device storage verification failed. The GitHub file has been kept.');
+   const deliveryKey='github:'+packet.id,alreadySaved=await setting('delivery:'+deliveryKey);
+   if(packet.recoveredExpired)recoveredExpired++;
+   if(!alreadySaved){
+    saved+=await mergeDelivery(deliveryKey,parsed.map(r=>r.value),!packet.recoveredExpired&&packet.packet.updateRatings===true);
+    const verified=new Set((await all()).map(key));if(parsed.some(r=>!verified.has(key(r.value))))throw Error('Device storage verification failed. The GitHub file has been kept.');
+   }
    const ack=await fetch('./api/github/ack',{method:'POST',credentials:'same-origin',cache:'no-store',headers:{'Content-Type':'application/json'},body:JSON.stringify({id:packet.id,receipt:packet.receipt,receiptToken:packet.receiptToken})});
    const result=await ack.json();if(!ack.ok||!result.acknowledged)throw Error(result.error||'Saved locally; GitHub acknowledgement failed. Pull again to retry.');
   }
   cursor=data.nextCursor||'';
   $('inbox-status').textContent=`${saved} new restaurants saved locally · ${totalPackets} deliveries checked${cursor?' · pulling next batch…':''}`;
   }while(cursor);
-  await refresh();collection='all';selectedCity='';$('search').value='';render();if(totalPackets)maps.locateMissing();
-  const message=totalPackets?`${saved} new restaurants saved locally. Ratings updated where requested. GitHub deletion acknowledged; cleanup is scheduled.`:`No GitHub lists waiting. ${rows.filter(r=>!r.deletedAt).length} restaurants on this device.`;$('inbox-status').textContent=message;toast(message);
+  await refresh();collection='all';selectedCity='';visitFilter='all';$('search').value='';render();if(totalPackets)maps.locateMissing();
+  const message=(totalPackets?`${saved} new restaurants saved locally. Existing entries preserved${recoveredExpired?`; ${recoveredExpired} older deliveries checked for missing entries`:''}. GitHub deletion acknowledged; cleanup is scheduled.`:`No new GitHub lists waiting. ${rows.filter(r=>!r.deletedAt).length} restaurants on this device.`)+(skippedExpired?` ${skippedExpired} expired deliveries skipped; ask your assistant to resend if needed.`:'')+(skippedAcknowledged?` ${skippedAcknowledged} previously acknowledged deliveries skipped.`:'');$('inbox-status').textContent=message;toast(message);
  }catch(e){await refresh().catch(()=>{});$('inbox-status').textContent=e.message;toast(e.message);}
  finally{checkingInbox=false;$('github-pull').disabled=false;$('inbox-check').disabled=false;}
 };
