@@ -6,7 +6,7 @@
   "scripts": {
     "test": "node --test tests/*.test.js",
     "serve": "python3 -m http.server 8080",
-    "test:dom": "node tests/dom-smoke.mjs",
+    "test:dom": "node tests/dom-smoke.mjs && node tests/map-review-dom.mjs",
     "build": "node scripts/embed-app.mjs && bash scripts/build.sh",
     "validate": "node scripts/validate-artifact.mjs",
     "test:inbox": "node tests/inbox.test.mjs",

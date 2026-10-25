@@ -9,7 +9,8 @@ const streetKey=s=>String(s||'').split(',')[0].toLowerCase().replace(/\b(street|
 function sameAddress(a,b){if(!a)return true;const zip=String(a).match(/\b\d{5}(?:-\d{4})?\b/);return streetKey(a)===streetKey(b)&&(!zip||String(b).includes(zip[0].slice(0,5)));}
 export function exactMatch(r,matches){const exact=matches.filter(m=>nameKey(m.name)===nameKey(r.name)&&sameCity(r,m)&&sameAddress(r.address,m.address));return exact.length===1?exact[0]:null;}
 export function createRestaurantMap({getRows,onChange,onEdit,onError}){
- let map,layer,lastBounds='',looking=false,requested=false,reviewId;
+ let map,layer,lastBounds='',looking=false,requested=false,reviewId,reviewVersion=0;
+ const skippedReviewIds=new Set();
  const text=(tag,value)=>{const n=document.createElement(tag);n.textContent=value;return n;};
  const btn=(label,fn)=>{const b=text('button',label);b.type='button';b.onclick=fn;return b;};
  function render(rows){
@@ -23,8 +24,27 @@ export function createRestaurantMap({getRows,onChange,onEdit,onError}){
   const response=await fetch('https://photon.komoot.io/api/?limit=5&q='+encodeURIComponent(query),{credentials:'omit',signal:AbortSignal.timeout(12000)});if(!response.ok)throw Error('Location lookup unavailable. Try again later or enter coordinates.');const found=candidates(await response.json());await setting(cacheKey,found);return found;
  }
  async function locateMissing(){if(looking){requested=true;return;}if(!navigator.onLine)return;looking=true;try{for(const r of getRows().filter(r=>!r.deletedAt&&!hasLocation(r))){const matches=await lookup(r),match=exactMatch(r,matches);if(match){await updateLocation(r.id,match.latitude,match.longitude,r);await onChange();}await new Promise(resolve=>setTimeout(resolve,1200));}}catch(e){onError(e);}finally{looking=false;if(requested){requested=false;locateMissing();}}}
- async function review(r){reviewId=r.id;$('location-title').textContent='Locate '+r.name;$('location-results').replaceChildren();$('location-error').textContent='Looking up location…';$('location-dialog').showModal();try{const matches=await lookup(r);if(reviewId!==r.id)return;$('location-error').textContent=matches.length?'Check the address before choosing a branch.':'No match found. Enter a more specific address or coordinates.';for(const m of matches){const box=document.createElement('div');box.className='location-choice';box.append(text('strong',m.name||r.name),text('p',m.address),btn('Use this location',async()=>{try{await updateLocation(r.id,m.latitude,m.longitude);$('location-dialog').close();await onChange();}catch(e){onError(e);}}));$('location-results').append(box);}const retry=btn('Retry lookup',()=>{setting('map-query:'+ [r.name,r.address,r.city].filter(Boolean).join(', '),null).then(()=>{$('location-dialog').close();review(r);}).catch(onError);});$('location-results').append(retry);}catch(e){$('location-error').textContent=e.message;}}
- $('map-locate').onclick=()=>{const r=getRows().find(r=>!r.deletedAt&&!hasLocation(r));if(r)review(r);else $('map-status').textContent='All saved restaurants are mapped.';};
+ async function review(r,retry=false){
+  reviewId=r.id;const version=++reviewVersion,current=()=>version===reviewVersion&&reviewId===r.id&&$('location-dialog').open;
+  $('location-title').textContent='Locate '+r.name;$('location-results').replaceChildren();$('location-error').textContent='Looking up location…';
+  if(!$('location-dialog').open)$('location-dialog').showModal();
+  try{
+   const matches=await lookup(r,retry);if(!current())return;
+   $('location-error').textContent=matches.length?'Check the address before choosing a branch.':'No match found. Enter a more specific address or coordinates.';
+   for(const m of matches){const box=document.createElement('div');box.className='location-choice';box.append(text('strong',m.name||r.name),text('p',m.address),btn('Use this location',async()=>{if(!current())return;try{await updateLocation(r.id,m.latitude,m.longitude);if(current())$('location-dialog').close();await onChange();}catch(e){onError(e);}}));$('location-results').append(box);}
+   $('location-results').append(btn('Retry lookup',()=>{if(current())review(r,true);}));
+  }catch(e){if(current())$('location-error').textContent=e.message;}
+ }
+ function nextReview(){
+  const r=getRows().find(r=>!r.deletedAt&&!hasLocation(r)&&!skippedReviewIds.has(r.id));
+  if(r){review(r);return;}
+  reviewId=null;++reviewVersion;if($('location-dialog').open)$('location-dialog').close();
+  const remaining=getRows().filter(r=>!r.deletedAt&&!hasLocation(r)).length;
+  $('map-status').textContent=remaining?`Review finished · ${remaining} skipped for now. Choose Review unmapped to revisit them.`:'All saved restaurants are mapped.';
+ }
+ $('map-locate').onclick=()=>{skippedReviewIds.clear();nextReview();};
+ $('location-skip').onclick=()=>{if(!reviewId)return;skippedReviewIds.add(reviewId);nextReview();};
+ $('location-dialog').addEventListener('close',()=>{if(!$('location-dialog').open){reviewId=null;++reviewVersion;}});
  $('location-edit').onclick=()=>{const r=getRows().find(r=>r.id===reviewId);$('location-dialog').close();if(r)onEdit(r);};
  return {render,locateMissing};
 }
