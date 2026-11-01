@@ -3,4 +3,6 @@ node_modules/
 tests/*.png
 *.backup.json
 dist/
+pages-dist/
+worker/index.js
 site.tar.gz

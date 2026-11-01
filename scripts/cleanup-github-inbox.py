@@ -1,5 +1,5 @@
 import hashlib,json,pathlib,re,urllib.request
-BASE='https://table-notes-restaurants.savorymug256.chatgpt.site/api/github/receipt/'
+BASE='https://table-notes-restaurants.asar1111.chatgpt.site/api/github/receipt/'
 for path in pathlib.Path('inbox').glob('*.json'):
     envelope=json.loads(path.read_text())
     if envelope.get('format')!='restaurants-encrypted-inbox' or envelope.get('version')!=1:continue

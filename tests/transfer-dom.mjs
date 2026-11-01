@@ -1,0 +1,14 @@
+import {JSDOM} from 'jsdom';import {indexedDB} from 'fake-indexeddb';import fs from 'node:fs';import assert from 'node:assert/strict';
+const dom=new JSDOM(fs.readFileSync(new URL('../index.html',import.meta.url),'utf8'),{url:'https://asre1212.github.io/Restuarants/'});
+Object.assign(globalThis,{window:dom.window,document:dom.window.document,indexedDB});Object.defineProperty(globalThis,'navigator',{value:dom.window.navigator,configurable:true});Object.defineProperty(navigator,'onLine',{value:false});
+dom.window.HTMLDialogElement.prototype.showModal=function(){this.open=true};dom.window.HTMLDialogElement.prototype.close=function(){this.open=false};
+globalThis.fetch=async()=>{throw Error('Transfer must not send notebook data to a server');};
+await import('../app.js');const $=id=>document.getElementById(id),db=await import('../db.js');
+assert.equal($('inbox-check').hidden,true);assert.ok($('inbox-status').textContent.includes('Force pull list'));
+$('restore').click();assert.equal($('transfer-dialog').open,true);assert.equal($('pages-link').href,'https://asre1212.github.io/Restuarants/');
+const base={name:'Synthetic duplicate',city:'NYC',cuisine:'Korean-pocha',rating:4.25,notes:'Saved notes',tags:['Visited']};
+const text=JSON.stringify({format:'restaurant-log-backup',version:1,restaurants:[{...base,id:'one'},{...base,id:'two'},{...base,id:'trash',deletedAt:'2026-10-01T00:00:00Z'}],categoryNotes:{'["NYC","Korean-pocha"]':'Favorite places'}});
+Object.defineProperty($('transfer-file'),'files',{value:[{size:text.length,text:async()=>text}]});await $('transfer-file').onchange();assert.ok($('transfer-status').textContent.includes('3 entries (1 in Trash)'));assert.equal($('transfer-save').disabled,false);
+await $('transfer-save').onclick();assert.equal((await db.all()).length,3);assert.equal(document.querySelectorAll('#restaurants .card').length,2);assert.equal($('trash-count').textContent,'1');assert.ok($('transfer-status').textContent.includes('Transfer complete: 3 entries added'));
+assert.deepEqual([...$('map-cuisine').options].map(o=>o.value),['','Korean / Pocha']);
+console.log('PASS: GitHub transfer UI restores all duplicate entries, Trash and notes locally; no network transfer.');process.exit(0);

@@ -1,10 +1,16 @@
 import {createRestaurantMap} from './map.js';
+import {PAGES_URL,onGitHubPages} from './hosting.js';
+import {startUpdates} from './updates.js';
+import {createInboxClient} from './inbox-client.js';
+import {parseNotebookBackup} from './backup.js';
 import {clean,isToTry,categoryTree,sortRestaurants,sortMichelin,tastingNotes,key,norm,parseImport,planImport,roundQuarter,readableNotebook,VERSION} from './core.js';
-import {openDB,all,write,setting,mergeDelivery,roundStoredRatings,reconcileVisitStatus,categoryNotes,restoreCategoryNotes} from './db.js';
+import {openDB,all,write,setting,mergeDelivery,roundStoredRatings,reconcileVisitStatus,reconcilePochaCategories,categoryNotes,restoreCategoryNotes,notebookBackup,restoreNotebook} from './db.js';
 const $=id=>document.getElementById(id);
 const node=(tag,text,cls)=>{const n=document.createElement(tag);if(text!==undefined)n.textContent=text;if(cls)n.className=cls;return n;};
 const button=(text,action,cls)=>{const b=node('button',text,cls);b.type='button';b.addEventListener('click',action);return b;};
 const categoryNoteDrafts=new Map();
+const pendingCategoryNotes=new Set(),inbox=createInboxClient();
+let checkingInbox=false;
 let collection='all',view='list',visitFilter='all';
 const maps=createRestaurantMap({getRows:()=>rows,onChange:()=>refresh(),onEdit:r=>edit(r),onError:fail});
 $('view-list').onclick=()=>{view='list';render();};
@@ -19,7 +25,7 @@ $('tools-dialog').addEventListener('click',event=>{
  if(event.target.closest('.tools button'))$('tools-dialog').close();
 },true);
 
-let rows=[],selectedCity='',reviewRows=[],waitingWorker=null,busy=false,toastTimer;
+let rows=[],selectedCity='',reviewRows=[],busy=false,toastTimer;
 function toast(text){$('status').textContent=text;$('status').hidden=false;clearTimeout(toastTimer);toastTimer=setTimeout(()=>$('status').hidden=true,6000);}
 function fail(error){console.error(error);toast('Could not finish: '+error.message);}
 async function refresh(){rows=await all();render();}
@@ -62,8 +68,8 @@ function categoryNote(path){
  const key='category-note:'+JSON.stringify([selectedCity||'*',...path]),detail=node('details',undefined,'category-notes'),summary=node('summary','Notes'),label=node('label','Your notes'),input=node('textarea'),status=node('span',undefined,'hint');
  detail.dataset.noteKey=key;input.dataset.categoryNote=key;input.rows=3;input.maxLength=20000;input.placeholder='Best overall, top favorites, places to remember…';input.setAttribute('aria-label',`Notes for ${selectedCity||'All cities'} · ${path.join(' · ')}`);status.setAttribute('role','status');
  if(categoryNoteDrafts.has(key))input.value=categoryNoteDrafts.get(key);else setting(key).then(value=>{if(!categoryNoteDrafts.has(key))input.value=value||'';}).catch(e=>status.textContent=e.message);
- let timer;const save=()=>{clearTimeout(timer);setting(key,input.value).then(()=>status.textContent='Saved on this device.').catch(e=>status.textContent='Could not save: '+e.message);};
- input.oninput=()=>{categoryNoteDrafts.set(key,input.value);status.textContent='Saving…';clearTimeout(timer);timer=setTimeout(save,300);};input.onblur=()=>{if(categoryNoteDrafts.has(key))save();};label.append(input);detail.append(summary,label,status);return detail;
+ let timer;const save=()=>{clearTimeout(timer);const value=input.value;pendingCategoryNotes.add(key);setting(key,value).then(()=>{if(categoryNoteDrafts.get(key)===value)pendingCategoryNotes.delete(key);status.textContent='Saved on this device.';}).catch(e=>status.textContent='Could not save: '+e.message);};
+ input.oninput=()=>{categoryNoteDrafts.set(key,input.value);pendingCategoryNotes.add(key);status.textContent='Saving…';clearTimeout(timer);timer=setTimeout(save,300);};input.onblur=()=>{if(categoryNoteDrafts.has(key))save();};label.append(input);detail.append(summary,label,status);return detail;
 }
 function appendListings(container,items){
  for(const r of items.filter(r=>!isToTry(r)))container.append(card(r));
@@ -99,7 +105,7 @@ document.querySelector('.collection-tabs').addEventListener('keydown',e=>{if(!['
 $('search').oninput=render;$('sort').onchange=render;
 for(const b of document.querySelectorAll('[data-close]'))b.onclick=()=>$(b.dataset.close).close();
 function startImport(kind='list'){reviewRows=[];$('import-text').value='';$('import-file').value='';$('default-city').value=selectedCity;$('default-cuisine').value='';$('review').replaceChildren();$('import-actions').hidden=true;$('import-error').textContent='';$('import-title').textContent=kind==='assistant'?'Add from your assistant':kind==='restore'?'Restore or merge a backup':'Bring your list';$('importer').showModal();}
-$('batch').onclick=()=>startImport();$('empty-import').onclick=()=>startImport();$('assistant').onclick=()=>startImport('assistant');$('restore').onclick=()=>startImport('restore');
+$('batch').onclick=()=>startImport();$('empty-import').onclick=()=>startImport();$('assistant').onclick=()=>startImport('assistant');
 $('import-file').onchange=async()=>{const file=$('import-file').files[0];if(!file)return;try{if(file.size>5_000_000)throw Error('Choose a file smaller than 5 MB.');$('import-text').value=await file.text();$('review').replaceChildren();$('import-actions').hidden=true;toast('File loaded. Choose Review import.');}catch(e){$('import-error').textContent=e.message;}};
 $('preview').onclick=()=>{try{reviewRows=parseImport($('import-text').value,{city:$('default-city').value,cuisine:$('default-cuisine').value});if(!reviewRows.length)throw Error('No restaurants found.');$('import-error').textContent='';renderReview();}catch(e){$('import-error').textContent=e.message;$('import-actions').hidden=true;$('review').replaceChildren();}};
 function reviewValues(){const list=[];for(const fieldset of $('review').children){if(!fieldset.querySelector('[data-include]').checked)continue;const raw={};for(const input of fieldset.querySelectorAll('[data-field]'))raw[input.dataset.field]=input.dataset.field==='tags'?input.value.split(';').map(t=>t.trim()).filter(Boolean):input.value;raw.deletedAt=reviewRows[Number(fieldset.dataset.index)].value.deletedAt??null;list.push(clean(raw));}return list;}
@@ -107,8 +113,13 @@ function backupNotesFromInput(){const text=$('import-text').value.trim();if(!tex
 function updateSummary(){try{const p=planImport(rows,reviewValues());$('import-summary').textContent=`${p.add.length} new entries · ${p.duplicates} duplicates skipped`;const notes=backupNotesFromInput();const count=notes&&typeof notes==='object'&&!Array.isArray(notes)?Object.keys(notes).length:0;if(count)$('import-summary').textContent+=` · ${count} category notes to merge`;$('commit-import').disabled=p.add.length===0&&!count;$('import-error').textContent='';}catch(e){$('import-summary').textContent='Correct the highlighted row information before saving.';$('commit-import').disabled=true;$('import-error').textContent=e.message;}}
 function renderReview(){$('review').replaceChildren();reviewRows.forEach((row,index)=>{const section=node('section',undefined,'review-row');section.dataset.index=String(index);const includeLabel=node('label',` Include restaurant ${index+1}`),include=node('input');include.type='checkbox';include.checked=true;include.dataset.include='';include.style.width='auto';include.style.display='inline';include.style.minHeight='auto';includeLabel.prepend(include);section.append(includeLabel);if(row.error)section.append(node('p',row.error,'error'));for(const f of ['name','city','cuisine','rating','notes','address','url','tags','michelinStars','latitude','longitude']){const label=node('label',f==='michelinStars'?'Michelin stars (0–3)':f==='rating'?'Rating (0–5, or blank)':f==='tags'?'Tags (separated by semicolons)':f.charAt(0).toUpperCase()+f.slice(1));const input=node(f==='notes'?'textarea':'input');input.dataset.field=f;input.setAttribute('aria-label',`${f} for restaurant ${index+1}`);const v=f==='michelinStars'?(row.value?.[f]??0):row.value?.[f];input.value=f==='tags'?(Array.isArray(v)?v.join('; '):''):(typeof v==='string'||typeof v==='number'?v:'');label.append(input);section.append(label);}if(row.value.deletedAt)section.append(node('p','This entry will be restored into Trash.','hint'));section.addEventListener('input',updateSummary);$('review').append(section);});$('import-actions').hidden=false;updateSummary();}
 $('commit-import').onclick=async()=>{if(busy)return;try{const latest=await all(),p=planImport(latest,reviewValues());busy=true;$('commit-import').disabled=true;await restoreCategoryNotes(backupNotesFromInput());const now=new Date().toISOString();await write(p.add.map(r=>({...r,id:crypto.randomUUID(),createdAt:now,updatedAt:now})));await refresh();$('importer').close();maps.locateMissing();toast(`${p.add.length} restaurants imported. ${p.duplicates} duplicates skipped.`);}catch(e){$('import-error').textContent=e.message;}finally{busy=false;$('commit-import').disabled=false;}};
-async function backup(){try{const current=await all();const data={format:'restaurant-log-backup',version:VERSION,exportedAt:new Date().toISOString(),restaurants:current,categoryNotes:await categoryNotes()};const blob=new Blob([JSON.stringify(data,null,2)],{type:'application/json'}),url=URL.createObjectURL(blob),a=node('a');a.href=url;a.download=`restaurants-backup-${new Date().toISOString().slice(0,10)}.json`;document.body.append(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),60000);await setting('lastExport',Date.now());window.backupDue=false;render();toast('Backup prepared. Save the downloaded file somewhere safe.');}catch(e){fail(e);}}
+async function backup(){try{for(const [key,value]of categoryNoteDrafts)await setting(key,value);const data=await notebookBackup();const blob=new Blob([JSON.stringify(data,null,2)],{type:'application/json'}),url=URL.createObjectURL(blob),a=node('a');a.href=url;a.download=`restaurants-backup-${new Date().toISOString().slice(0,10)}.json`;document.body.append(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),60000);await setting('lastExport',Date.now());window.backupDue=false;render();toast('Backup prepared. Save the downloaded file somewhere safe.');}catch(e){fail(e);}}
 $('export').onclick=backup;$('backup-top').onclick=backup;
+let transferPacket=null;
+function openTransfer(){transferPacket=null;$('transfer-file').value='';$('transfer-status').textContent='Choose the JSON backup exported from your existing app.';$('transfer-save').disabled=true;$('transfer-dialog').showModal();}
+$('restore').onclick=openTransfer;$('transfer').onclick=openTransfer;$('transfer-export').onclick=backup;$('pages-link').href=PAGES_URL;
+$('transfer-file').onchange=async()=>{transferPacket=null;$('transfer-save').disabled=true;try{const file=$('transfer-file').files[0];if(!file)return;if(file.size>20_000_000)throw Error('Choose a backup smaller than 20 MB.');transferPacket=parseNotebookBackup(await file.text());const count=transferPacket.restaurants.length,trash=transferPacket.restaurants.filter(r=>r.deletedAt).length;$('transfer-status').textContent=`Ready: ${count} entries (${trash} in Trash), ${Object.keys(transferPacket.categoryNotes).length} category notes. All entries will be retained; existing entries stay intact.`;$('transfer-save').disabled=false;}catch(e){$('transfer-status').textContent=e.message;}};
+$('transfer-save').onclick=async()=>{if(!transferPacket||busy)return;busy=true;$('transfer-save').disabled=true;try{const result=await restoreNotebook(transferPacket);await refresh();$('transfer-status').textContent=`Transfer complete: ${result.added} entries added; ${result.kept} already present.${result.copies?' Conflicting versions were kept as separate entries.':''} Verify your collection before removing the old installation.`;transferPacket=null;toast('Notebook restored. All existing entries were kept.');}catch(e){$('transfer-status').textContent=e.message;$('transfer-save').disabled=false;}finally{busy=false;}};
 let textExport=null,textExportRequest=0,textExportBusy=false;
 function textExportControls(disabled){for(const id of ['text-save','text-share','text-copy'])$(id).disabled=disabled;}
 function selectExportText(){const input=$('text-preview');input.focus();input.select();input.setSelectionRange(0,input.value.length);}
@@ -167,23 +178,24 @@ function renderTrash(){$('trash-list').replaceChildren();const trashed=rows.filt
 $('trash').onclick=()=>{renderTrash();$('trash-dialog').showModal();};
 $('persist').onclick=async()=>{try{$('persist-status').textContent=navigator.storage?.persist?(await navigator.storage.persist()?'Durable storage granted. Backups are still important.':'This browser did not grant durable storage. Keep regular backups.'):'This browser does not support durable-storage requests. Keep regular backups.';}catch(e){$('persist-status').textContent='Storage request unavailable. Keep regular backups.';}};
 window.tableNotes=Object.freeze({schemaVersion:VERSION,prepareImport(packet){startImport('assistant');$('import-text').value=typeof packet==='string'?packet:JSON.stringify(packet,null,2);$('preview').click();}});
-try{await openDB();await roundStoredRatings();await reconcileVisitStatus();const last=await setting('lastExport');window.backupDue=!last||Date.now()-last>7*86400000;await refresh();}catch(e){$('empty').hidden=true;$('restaurants').append(node('p','Device storage is unavailable. Your changes cannot be saved. Check browser privacy settings and reload.','error'));for(const b of document.querySelectorAll('button'))b.disabled=true;fail(e);}
-if('serviceWorker' in navigator){try{const registration=await navigator.serviceWorker.register('./sw.js',{scope:'./'});const showUpdate=()=>{waitingWorker=registration.waiting;if(waitingWorker)$('update').hidden=false;};showUpdate();registration.addEventListener('updatefound',()=>{const worker=registration.installing;worker?.addEventListener('statechange',()=>{if(worker.state==='installed'){if(navigator.serviceWorker.controller)showUpdate();else $('offline-status').textContent='Ready for offline use after this page has finished loading.';}});});await navigator.serviceWorker.ready;$('offline-status').textContent='App shell saved for offline use. Your restaurant data stays on this device.';$('apply-update').onclick=()=>{if(document.querySelector('dialog[open]')){toast('Finish or cancel your open form before updating.');return;}waitingWorker?.postMessage({type:'SKIP_WAITING'});};let refreshing=false;navigator.serviceWorker.addEventListener('controllerchange',()=>{if(!refreshing&&waitingWorker){refreshing=true;location.reload();}});}catch(e){$('offline-status').textContent='Offline installation unavailable. Open the app over HTTPS and try again.';}}else $('offline-status').textContent='This browser does not support offline installation.';
+try{await openDB();await reconcilePochaCategories();await roundStoredRatings();await reconcileVisitStatus();const last=await setting('lastExport');window.backupDue=!last||Date.now()-last>7*86400000;await refresh();}catch(e){$('empty').hidden=true;$('restaurants').append(node('p','Device storage is unavailable. Your changes cannot be saved. Check browser privacy settings and reload.','error'));for(const b of document.querySelectorAll('button'))b.disabled=true;fail(e);}
+const canReload=()=>!busy&&!checkingInbox&&!document.querySelector('dialog[open]')&&!pendingCategoryNotes.size&&!document.activeElement?.matches('input,textarea,[contenteditable="true"]');
+const updates=await startUpdates({canReload,onWaiting:waiting=>{$('update').hidden=!waiting;},onStatus:text=>$('offline-status').textContent=text});
+$('apply-update').onclick=()=>{if(!canReload()){toast('Finish your open form or save before updating.');return;}updates?.apply();};
 
-
-let checkingInbox=false;
 async function readInbox(){
  const controller=navigator.serviceWorker?.controller;
  if(!controller){const r=await fetch('./api/inbox',{credentials:'same-origin',cache:'no-store',redirect:'error'});return {status:r.status,data:r.ok?await r.json():null};}
  return new Promise((resolve,reject)=>{const channel=new MessageChannel();const timer=setTimeout(()=>{channel.port1.close();reject(Error('Inbox check timed out.'));},15000);channel.port1.onmessage=event=>{clearTimeout(timer);channel.port1.close();resolve(event.data);};controller.postMessage({type:'CHECK_ASSISTANT_INBOX'},[channel.port2]);});
 }
 async function checkInbox(){
+ if(onGitHubPages()){$('inbox-connect').hidden=true;$('inbox-check').hidden=true;$('inbox-status').textContent='Use Force pull list to receive assistant entries. Sign-in opens in a separate window; your notebook stays here.';return;}
  if(checkingInbox||busy||document.querySelector('dialog[open]'))return;
  checkingInbox=true;$('inbox-check').disabled=true;
  try{
   const result=await readInbox();$('inbox-connect').hidden=result.status!==401;
   if(result.status===401){$('inbox-status').textContent='Connect your ChatGPT account once to receive assistant entries. Your notebook stays local.';return;}
-  if(result.status===404){$('inbox-status').textContent='Assistant inbox is available in the hosted Restaurants app.';$('inbox-connect').hidden=false;$('inbox-connect').href='https://table-notes-restaurants.savorymug256.chatgpt.site/';$('inbox-connect').textContent='Open hosted Restaurants';return;}
+  if(result.status===404){$('inbox-status').textContent='Assistant inbox is available in the hosted Restaurants app.';$('inbox-connect').hidden=false;$('inbox-connect').href='https://table-notes-restaurants.asar1111.chatgpt.site/';$('inbox-connect').textContent='Open hosted Restaurants';return;}
   if(result.status!==200)throw Error('Inbox unavailable. Your notebook is still available offline.');
   if(busy||document.querySelector('dialog[open]'))return;
   const packets=result.data?.packets;if(!Array.isArray(packets)||packets.length>20)throw Error('Invalid inbox response.');
@@ -220,8 +232,9 @@ $('github-pull').onclick=async()=>{
  if(checkingInbox||busy||document.querySelector('dialog[open]')){toast('Finish the open form before pulling.');return;}
  checkingInbox=true;$('github-pull').disabled=true;$('inbox-check').disabled=true;let saved=0,totalPackets=0,skippedExpired=0,skippedAcknowledged=0,recoveredExpired=0,cursor='';
  try{
+  inbox.open();
   do{
-  const response=await fetch('./api/github/pull'+(cursor?'?after='+encodeURIComponent(cursor):''),{method:'POST',credentials:'same-origin',cache:'no-store'}),data=await response.json();
+  const response=await inbox.request('./api/github/pull'+(cursor?'?after='+encodeURIComponent(cursor):''),{method:'POST',credentials:'same-origin',cache:'no-store'}),data=await response.json();
   if(!response.ok)throw Error(data.error||'GitHub pull failed.');
   if(!Array.isArray(data.packets)||data.packets.length>20||data.nextCursor!=null&&(typeof data.nextCursor!=='string'||! /^[A-Za-z0-9_-]{8,100}\.json$/.test(data.nextCursor)||data.nextCursor<=cursor))throw Error('Invalid GitHub response.');
   totalPackets+=data.packets.length;skippedExpired+=data.skippedExpired||0;skippedAcknowledged+=data.skippedAcknowledged||0;
@@ -234,13 +247,14 @@ $('github-pull').onclick=async()=>{
     saved+=await mergeDelivery(deliveryKey,parsed.map(r=>r.value),!packet.recoveredExpired&&packet.packet.updateRatings===true);
     const verified=new Set((await all()).map(key));if(parsed.some(r=>!verified.has(key(r.value))))throw Error('Device storage verification failed. The GitHub file has been kept.');
    }
-   const ack=await fetch('./api/github/ack',{method:'POST',credentials:'same-origin',cache:'no-store',headers:{'Content-Type':'application/json'},body:JSON.stringify({id:packet.id,receipt:packet.receipt,receiptToken:packet.receiptToken})});
+   const ack=await inbox.request('./api/github/ack',{method:'POST',credentials:'same-origin',cache:'no-store',headers:{'Content-Type':'application/json'},body:JSON.stringify({id:packet.id,receipt:packet.receipt,receiptToken:packet.receiptToken})});
    const result=await ack.json();if(!ack.ok||!result.acknowledged)throw Error(result.error||'Saved locally; GitHub acknowledgement failed. Pull again to retry.');
   }
   cursor=data.nextCursor||'';
   $('inbox-status').textContent=`${saved} new restaurants saved locally · ${totalPackets} deliveries checked${cursor?' · pulling next batch…':''}`;
   }while(cursor);
   await refresh();collection='all';selectedCity='';visitFilter='all';$('search').value='';render();if(totalPackets)maps.locateMissing();
+  inbox.close();
   const message=(totalPackets?`${saved} new restaurants saved locally. Existing entries preserved${recoveredExpired?`; ${recoveredExpired} older deliveries checked for missing entries`:''}. GitHub deletion acknowledged; cleanup is scheduled.`:`No new GitHub lists waiting. ${rows.filter(r=>!r.deletedAt).length} restaurants on this device.`)+(skippedExpired?` ${skippedExpired} expired deliveries skipped; ask your assistant to resend if needed.`:'')+(skippedAcknowledged?` ${skippedAcknowledged} previously acknowledged deliveries skipped.`:'');$('inbox-status').textContent=message;toast(message);
  }catch(e){await refresh().catch(()=>{});$('inbox-status').textContent=e.message;toast(e.message);}
  finally{checkingInbox=false;$('github-pull').disabled=false;$('inbox-check').disabled=false;}

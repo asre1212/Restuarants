@@ -2,18 +2,34 @@
 
 # Restaurants
 
-[Open the hosted app](https://table-notes-restaurants.savorymug256.chatgpt.site/)
+[Open Restaurants on GitHub Pages](https://asre1212.github.io/Restuarants/)
 
-## Assistant inbox
+## GitHub-hosted app
 
-Install the Restaurants plugin offered in ChatGPT. Open the hosted app and click **Connect assistant inbox with ChatGPT** once using the same account. Then tell ChatGPT: “Use Restaurants to add [restaurant], in [city], cuisine [cuisine].” The `add_restaurants` tool queues a delivery; it cannot read your notebook. Open the app to receive entries automatically and see **New from assistant** badges. Use **Mark seen** to clear the badges. Checks run on launch, return to the app, and when a form closes. **Check assistant inbox** runs one manually.
+The notebook lives at **https://asre1212.github.io/Restuarants/**. All source is in this repository. GitHub Actions tests and publishes the static app on each main-branch app change. `npm run build:pages` creates an explicit static-only artifact; it excludes inbox envelopes, server code, backups, tests, and repository metadata. The installed PWA works offline after its first online launch.
 
-Only incoming deliveries live in the account-isolated hosted inbox. Your existing restaurants, personal edits, ratings, notes, Trash, and backups remain local and are never uploaded. The app commits entries and a receipt atomically before requesting deletion from the inbox. Retries and cross-tab imports do not add duplicate deliveries. The first device to import drains the delivery; other devices do not sync. Deliveries expire after seven days and expired packets are deleted on the next inbox access. The inbox is a handoff queue, not a backup.
+### Move your complete notebook
 
-Hosting runs in a Cloudflare Worker through Sites. `worker/inbox.js` implements authenticated MCP tools and inbox GET/receipt endpoints. Sites provides caller identity; all storage keys are account-scoped. Inbox responses are never cached. `scripts/embed-app.mjs` builds the allowlisted static assets into the Worker. Run `npm run build`, then `npm run validate`. The original static app remains usable without a backend, but assistant delivery requires the hosted origin.
+1. In the existing installed app, use **Tools → Export backup** and save the JSON file to Files. Keep that installation until transfer is verified.
+2. Open the GitHub URL in Safari, add it to your Home Screen, and open that new installation.
+3. Use **Tools → Restore full backup**, choose the file, review the entry/Trash/category-note counts, and choose **Restore all entries**.
+4. Check your collection and keep the backup.
 
+A different host has separate browser storage, so the assistant cannot copy the iPhone database remotely. This restore keeps distinct same-name records, IDs, saved dates, notes, ratings, coordinates, Michelin selections, and Trash. It transfers delivery receipts when included in a new backup. Old version-1 JSON backups still work. Matching IDs with different content keep both versions; retrying the same backup is safe. Existing entries are never cleared or replaced.
 
-A buildless, local-only restaurant notebook. No analytics or external fonts. The optional inbox uses ChatGPT sign-in and temporary delivery storage. First launch is empty.
+### Automatic app updates
+
+The app checks for a release on startup, return to the foreground, reconnection, and every five minutes while open. Each Pages build derives a release ID from all app-shell files, so releases need no manual cache-version bump. A waiting release asks every open app tab whether it can update. Open forms, pending saves, and active text fields defer activation and reload; an older tab that cannot answer must be closed. Failed/offline downloads retain the installed shell. Updates never touch IndexedDB and only prune this app's scoped old shell caches. These are app updates, not notebook synchronization.
+
+### Assistant deliveries
+
+GitHub Pages serves static files and cannot run the authenticated MCP/encryption service. That small service remains at https://table-notes-restaurants.asar1111.chatgpt.site; its complete source is in `worker/` in this repo. On GitHub, **Force pull list** opens a sign-in/inbox window. A bounded, origin/source/channel-checked bridge retrieves encrypted GitHub deliveries. The GitHub notebook saves and verifies each batch locally before sending the signed acknowledgement. Original notebook data is never sent to the service. The normal authenticated-host same-origin flow is retained for the old installation.
+
+Install the Restaurants plugin in ChatGPT. The assistant calls `add_restaurants`, writes the returned encrypted envelope and index entry to this repo, and then confirms it is queued. Only incoming deliveries use server storage. GitHub cleanup deletes current encrypted files only after verified acknowledgement. Deliveries are a handoff queue, not a backup or sync service. No key, GitHub token, notebook record, or export is committed with the static app.
+
+The old hosted installation remains available for export and the inbox service. There is no automatic redirect from its app to GitHub, because that could strand an existing device notebook. `npm run build` and `npm run validate` build/validate the retained service and transfer UI; Sites publication is needed only for service/bridge changes, not routine GitHub app updates.
+
+`worker/index.js` is generated from the tracked source by `npm run build` and is not stored in Git. Run that build before the separate Worker/inbox test scripts. The new dining icon is generated artwork with platform-sized exports; see `icons/README.md`.
 
 ## Run
 
@@ -27,11 +43,9 @@ Open http://localhost:8080. HTTPS is required for service workers outside localh
 
 ## Deploy to GitHub Pages
 
-Publish this directory's static files at a stable path. Every asset, manifest entry, and service-worker scope is relative, so a project prefix such as `/restaurants/` or `/wine/restaurants/` works without rebuilding. Include `icons/`. No build step or dependency installation is needed. Never commit exported restaurant backups or any private user data.
+Set the repository's **Settings → Pages → Source** to **GitHub Actions**. `.github/workflows/pages.yml` runs the test suites, builds `pages-dist/`, and publishes it. The source branch is `main`; retain the exact `/Restuarants/` path and relative manifest identity. Future updates use the same URL and preserve local data. `inbox/`-only changes do not deploy the app.
 
-Keep the origin and deployment path stable: origin changes create separate browser storage and changing the path may change the installed app's identity. Back up before any move. A Pages subpath is **not** a security boundary: JavaScript in another app on the same origin could access IndexedDB. This app never reads or modifies other apps' databases, workers, or caches. Check other apps for origin-wide cleanup operations before co-hosting.
-
-For updates, change the `CACHE` release suffix in `sw.js` whenever an app-shell asset changes. New versions wait and display an Update app button. Updating never deletes IndexedDB. The button refuses to reload while a dialog is open. App caches are scope-namespaced; only older caches with that exact scope prefix are deleted.
+Other applications under the same `asre1212.github.io` origin share the browser's origin boundary. This app uses its existing distinct `table-notes-local-v1` database and scope-prefixed caches and never clears another app's storage.
 
 ## Privacy and storage
 
@@ -101,6 +115,8 @@ Each listing has a Michelin checkbox and a 1–3 star selector; the editor has t
 Enter one food or drink score per line, for example `Burger — 4.75/5. Ask for relish on the side.` Explicit `/5` and `:5` scores render as a compact tasting list with comments. General notes remain separate. Dish scores are never averaged into an overall restaurant rating, and the raw notes are retained in local storage and backups.
 
 ## Force pull from GitHub
+
+NYC `Korean-pocha` and `Korean / Pocha` entries use one canonical `Korean / Pocha` category. On startup, the app relabels existing records in place, including Trash, preserving IDs and all other fields. It never merges or deletes restaurant records, even if their resulting import keys match. New imports and edits normalize the same aliases. Original category notes are retained and copied once into the combined Korean → Pocha section; repeated startup and backup restoration do not append the same notes again. The app-shell release is v22.
 
 The **Force pull list** button reads encrypted envelopes from `inbox/` on `asre1212/Restuarants` main. The signed-in owner's verified account authorizes decryption; the runtime secret never goes to GitHub or the browser. No list is consumed by a page preview or an automatic check. The app commits locally and rereads records to verify them before acknowledging deletion. Matching entries are skipped; a delivery explicitly marked `updateRatings` may update only the overall rating of matching entries, preserving notes, Michelin stars, IDs and Trash.
 
