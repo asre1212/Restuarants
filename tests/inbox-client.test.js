@@ -6,5 +6,7 @@ test('Pages inbox validates source, origin and channel; API acknowledgements rem
  listener({origin:'https://evil.test',source:popup,data:{type:'RESTAURANTS_BRIDGE_READY',channel}});assert.equal(sent,undefined);
  listener({origin:INBOX_ORIGIN,source:{},data:{type:'RESTAURANTS_BRIDGE_READY',channel}});assert.equal(sent,undefined);
  listener({origin:INBOX_ORIGIN,source:popup,data:{type:'RESTAURANTS_BRIDGE_READY',channel}});assert.equal(sent.origin,INBOX_ORIGIN);assert.equal(sent.message.path,'./api/github/pull');
+ const first=sent;listener({origin:INBOX_ORIGIN,source:popup,data:{type:'RESTAURANTS_BRIDGE_RESPONSE',channel,id:sent.message.id,status:401,data:{error:'Sign in'}}});
+ listener({origin:INBOX_ORIGIN,source:popup,data:{type:'RESTAURANTS_BRIDGE_READY',channel}});assert.notEqual(sent,first);assert.equal(sent.message.id,first.message.id);
  listener({origin:INBOX_ORIGIN,source:popup,data:{type:'RESTAURANTS_BRIDGE_RESPONSE',channel,id:sent.message.id,status:200,data:{packets:[]}}});assert.deepEqual(await (await request).json(),{packets:[]});client.close();assert.equal(popup.closed,true);
 });

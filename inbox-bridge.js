@@ -8,12 +8,13 @@ window.addEventListener('message',async event=>{
  const path=String(message.path||'').replace(/^\.\//,'/');
  const pull=/^\/api\/github\/pull(?:\?after=[A-Za-z0-9_.%-]+)?$/.test(path)&&message.method==='POST';
  const ack=path==='/api/github/ack'&&message.method==='POST';
- if(!pull&&!ack)return;
+ const connect=path==='/api/notebook/connect'&&message.method==='POST';
+ if(!pull&&!ack&&!connect)return;
  try{
-  const response=await fetch(path,{method:'POST',credentials:'same-origin',cache:'no-store',headers:{'Content-Type':'application/json'},body:ack?message.body:undefined});
+  const response=await fetch(path,{method:'POST',credentials:'same-origin',cache:'no-store',headers:{'Content-Type':'application/json'},body:ack||connect?message.body:undefined});
   const data=await response.json();
-  if(response.status===401){signin.hidden=false;status.textContent='Sign in, then return to your GitHub notebook and tap Force pull list again.';}
-  else status.textContent=response.ok?'Connected. Your notebook is receiving its list.':data.error||'Could not retrieve the list.';
+  if(response.status===401){signin.hidden=false;status.textContent='Sign in to continue. Your notebook will connect when you return here.';}
+  else status.textContent=response.ok?(connect?'Connected. Your phone can now publish its private copy.':'Connected. Your notebook is receiving its list.'):data.error||'Could not retrieve the list.';
   parent.postMessage({type:'RESTAURANTS_BRIDGE_RESPONSE',channel,id:message.id,status:response.status,data},target);
  }catch{parent.postMessage({type:'RESTAURANTS_BRIDGE_RESPONSE',channel,id:message.id,status:503,data:{error:'Assistant inbox is unavailable. Your notebook is unchanged.'}},target);}
 });

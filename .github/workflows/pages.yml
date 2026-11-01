@@ -24,6 +24,7 @@ jobs:
       - run: npm test
       - run: npm run test:dom
       - run: npm run test:export
+      - run: npm run test:private
       - run: npm run build:pages
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v3

@@ -1,0 +1,21 @@
+import test from 'node:test';import assert from 'node:assert/strict';import {indexedDB} from 'fake-indexeddb';
+import {openDB,write,setting,all,notebookBackup,sharingState,sharingSnapshot} from '../db.js';
+import {createPrivatePublisher} from '../sharing.js';
+test('phone publisher preserves journal, excludes credentials, retries latest offline changes and removes only remote copy',async()=>{
+ globalThis.indexedDB=indexedDB;await openDB();
+ const row={id:'original',name:'Private notebook',city:'NYC',cuisine:'Korean',rating:4.25,notes:'Original',tags:[]};await write([row]);await setting('category-note:["NYC","Korean"]','Category note');
+ let online=true,calls=[],fail=false,hold;
+ const request=async(url,options)=>{calls.push({url,options});if(hold){const wait=hold;hold=null;await wait;}if(fail)throw Error('Offline network failure');return new Response(JSON.stringify(url.endsWith('/revoke')?{removed:true}:{last_shared_at:'2026-11-01T12:00:00Z',counts:{active:1,trash:0}}),{status:200});};
+ const publisher=createPrivatePublisher({request,online:()=>online});await publisher.sync();assert.equal(calls.length,0);
+ await sharingState({enabled:true,deviceId:crypto.randomUUID(),token:'synthetic-upload-secret',sequence:0});
+ const first=await sharingSnapshot(),second=await sharingSnapshot();assert.ok(second.snapshot.sequence>first.snapshot.sequence);assert.equal(JSON.stringify(first.snapshot).includes('synthetic-upload-secret'),false);assert.equal(JSON.stringify(await notebookBackup()).includes('synthetic-upload-secret'),false);
+ await publisher.sync();assert.equal(calls.length,1);assert.equal(calls[0].options.credentials,'omit');assert.equal(JSON.parse(calls[0].options.body).categoryNotes['["NYC","Korean"]'],'Category note');
+ await publisher.sync();assert.equal(calls.length,1);
+ online=false;await write([{...row,notes:'Offline change'}]);await publisher.sync();assert.equal(calls.length,1);
+ online=true;fail=true;await publisher.sync();assert.equal((await all())[0].notes,'Offline change');assert.match((await sharingState()).error,/Offline/);
+ fail=false;await publisher.sync();assert.equal(JSON.parse(calls.at(-1).options.body).restaurants[0].notes,'Offline change');assert.equal((await sharingState()).error,null);
+ let release;hold=new Promise(r=>release=r);const current=publisher.sync(true);await new Promise(r=>setTimeout(r,5));await write([{...row,notes:'Newer while uploading'}]);publisher.sync();release();await current;assert.equal(JSON.parse(calls.at(-1).options.body).restaurants[0].notes,'Newer while uploading');
+ const before=await all();online=false;await publisher.disable();assert.equal((await sharingState()).pendingRevoke,true);assert.equal((await sharingState()).enabled,false);
+ online=true;await publisher.sync();assert.ok(calls.at(-1).url.endsWith('/revoke'));assert.equal((await sharingState()).token,null);assert.deepEqual(await all(),before);
+ publisher.stop();
+});

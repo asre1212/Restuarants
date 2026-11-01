@@ -7,12 +7,13 @@
     "test": "node --test tests/*.test.js",
     "serve": "python3 -m http.server 8080",
     "dev": "node scripts/preview.mjs",
-    "test:dom": "node tests/dom-smoke.mjs && node tests/map-review-dom.mjs && node tests/pocha-dom.mjs && node tests/transfer-dom.mjs",
+    "test:dom": "node tests/dom-smoke.mjs && node tests/map-review-dom.mjs && node tests/pocha-dom.mjs && node tests/transfer-dom.mjs && node tests/sharing-dom.mjs",
     "build": "node scripts/embed-app.mjs && bash scripts/build.sh",
     "build:pages": "node scripts/build-pages.mjs",
     "validate": "node scripts/validate-artifact.mjs",
     "test:inbox": "node tests/inbox.test.mjs",
-    "test:export": "node tests/text-export-dom.mjs"
+    "test:export": "node tests/text-export-dom.mjs",
+    "test:private": "node scripts/embed-app.mjs && node tests/notebook.test.mjs"
   },
   "devDependencies": {
     "fake-indexeddb": "6.2.5",

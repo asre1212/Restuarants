@@ -1,5 +1,6 @@
 import {createRestaurantMap} from './map.js';
 import {PAGES_URL,onGitHubPages} from './hosting.js';
+import {startPrivateSharing} from './sharing-ui.js';
 import {startUpdates} from './updates.js';
 import {createInboxClient} from './inbox-client.js';
 import {parseNotebookBackup} from './backup.js';
@@ -10,7 +11,7 @@ const node=(tag,text,cls)=>{const n=document.createElement(tag);if(text!==undefi
 const button=(text,action,cls)=>{const b=node('button',text,cls);b.type='button';b.addEventListener('click',action);return b;};
 const categoryNoteDrafts=new Map();
 const pendingCategoryNotes=new Set(),inbox=createInboxClient();
-let checkingInbox=false;
+let checkingInbox=false,privateSharing;
 let collection='all',view='list',visitFilter='all';
 const maps=createRestaurantMap({getRows:()=>rows,onChange:()=>refresh(),onEdit:r=>edit(r),onError:fail});
 $('view-list').onclick=()=>{view='list';render();};
@@ -179,7 +180,8 @@ $('trash').onclick=()=>{renderTrash();$('trash-dialog').showModal();};
 $('persist').onclick=async()=>{try{$('persist-status').textContent=navigator.storage?.persist?(await navigator.storage.persist()?'Durable storage granted. Backups are still important.':'This browser did not grant durable storage. Keep regular backups.'):'This browser does not support durable-storage requests. Keep regular backups.';}catch(e){$('persist-status').textContent='Storage request unavailable. Keep regular backups.';}};
 window.tableNotes=Object.freeze({schemaVersion:VERSION,prepareImport(packet){startImport('assistant');$('import-text').value=typeof packet==='string'?packet:JSON.stringify(packet,null,2);$('preview').click();}});
 try{await openDB();await reconcilePochaCategories();await roundStoredRatings();await reconcileVisitStatus();const last=await setting('lastExport');window.backupDue=!last||Date.now()-last>7*86400000;await refresh();}catch(e){$('empty').hidden=true;$('restaurants').append(node('p','Device storage is unavailable. Your changes cannot be saved. Check browser privacy settings and reload.','error'));for(const b of document.querySelectorAll('button'))b.disabled=true;fail(e);}
-const canReload=()=>!busy&&!checkingInbox&&!document.querySelector('dialog[open]')&&!pendingCategoryNotes.size&&!document.activeElement?.matches('input,textarea,[contenteditable="true"]');
+privateSharing=await startPrivateSharing().catch(e=>{$('sharing-summary').textContent='Private copy unavailable: '+e.message;});
+const canReload=()=>!privateSharing?.busy&&!busy&&!checkingInbox&&!document.querySelector('dialog[open]')&&!pendingCategoryNotes.size&&!document.activeElement?.matches('input,textarea,[contenteditable="true"]');
 const updates=await startUpdates({canReload,onWaiting:waiting=>{$('update').hidden=!waiting;},onStatus:text=>$('offline-status').textContent=text});
 $('apply-update').onclick=()=>{if(!canReload()){toast('Finish your open form or save before updating.');return;}updates?.apply();};
 

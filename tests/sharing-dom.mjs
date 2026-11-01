@@ -1,0 +1,11 @@
+import {JSDOM} from 'jsdom';import {indexedDB} from 'fake-indexeddb';import fs from 'node:fs';import assert from 'node:assert/strict';
+const dom=new JSDOM(fs.readFileSync(new URL('../index.html',import.meta.url),'utf8'),{url:'https://table-notes-restaurants.asar1111.chatgpt.site/'});
+Object.assign(globalThis,{window:dom.window,document:dom.window.document,indexedDB});Object.defineProperty(globalThis,'navigator',{value:dom.window.navigator,configurable:true});
+dom.window.HTMLDialogElement.prototype.showModal=function(){this.open=true};dom.window.HTMLDialogElement.prototype.close=function(){this.open=false};
+const calls=[];globalThis.fetch=async(url,options={})=>{calls.push({url,options});let data={packets:[]};if(url.endsWith('/connect')){const body=JSON.parse(options.body);data={token:'synthetic-token',deviceId:body.deviceId,sequence:0};}if(url.endsWith('/snapshot'))data={last_shared_at:'2026-11-01T12:00:00Z',counts:{active:1,trash:0}};return new Response(JSON.stringify(data),{status:200});};
+const db=await import('../db.js');await db.openDB();await db.write([{id:'sample',name:'Phone journal',city:'NYC',cuisine:'Korean',rating:4,notes:'Initial',tags:[]}]);
+await import('../app.js');const $=id=>document.getElementById(id);assert.equal(calls.some(c=>c.url.endsWith('/snapshot')),false);
+await $('private-copy').onclick();assert.equal($('sharing-dialog').open,true);await $('sharing-enable').onclick();assert.equal($('sharing-sync').hidden,false);assert.ok($('sharing-last').textContent.includes('1 places'));assert.equal(calls.filter(c=>c.url.endsWith('/snapshot')).length,1);
+await db.write([{...(await db.all())[0],notes:'Saved while sharing'}]);await new Promise(r=>setTimeout(r,950));assert.equal(JSON.parse(calls.filter(c=>c.url.endsWith('/snapshot')).at(-1).options.body).restaurants[0].notes,'Saved while sharing');
+await $('sharing-disable').onclick();assert.equal($('sharing-enable').hidden,false);assert.equal((await db.all())[0].notes,'Saved while sharing');assert.equal((await db.sharingState()).enabled,false);
+console.log('PASS: private-copy controls enable from the journal, auto-publish committed edits, show last upload, and disable without changing entries.');process.exit(0);
