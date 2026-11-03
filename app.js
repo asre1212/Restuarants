@@ -4,7 +4,7 @@ import {startPrivateSharing} from './sharing-ui.js';
 import {startUpdates} from './updates.js';
 import {createInboxClient} from './inbox-client.js';
 import {parseNotebookBackup} from './backup.js';
-import {clean,isToTry,categoryTree,sortRestaurants,sortMichelin,tastingNotes,key,norm,parseImport,planImport,roundQuarter,readableNotebook,VERSION} from './core.js';
+import {clean,restaurantCountry,regionRows,isToTry,categoryTree,sortRestaurants,sortMichelin,tastingNotes,key,norm,parseImport,planImport,roundQuarter,readableNotebook,VERSION} from './core.js';
 import {openDB,all,write,setting,mergeDelivery,roundStoredRatings,reconcileVisitStatus,reconcilePochaCategories,categoryNotes,restoreCategoryNotes,notebookBackup,restoreNotebook} from './db.js';
 const $=id=>document.getElementById(id);
 const node=(tag,text,cls)=>{const n=document.createElement(tag);if(text!==undefined)n.textContent=text;if(cls)n.className=cls;return n;};
@@ -12,12 +12,18 @@ const button=(text,action,cls)=>{const b=node('button',text,cls);b.type='button'
 const categoryNoteDrafts=new Map();
 const pendingCategoryNotes=new Set(),inbox=createInboxClient();
 let checkingInbox=false,privateSharing;
-let collection='all',view='list',visitFilter='all';
+let collection='us',selectedCountry='',view='list',visitFilter='all';
 const maps=createRestaurantMap({getRows:()=>rows,onChange:()=>refresh(),onEdit:r=>edit(r),onError:fail});
 $('view-list').onclick=()=>{view='list';render();};
 $('view-map').onclick=()=>{view='map';render();maps.locateMissing();};
+const filterDropdown=$('filter-dropdown');
+filterDropdown.addEventListener('toggle',()=>{if(filterDropdown.open)$('search').focus();});
+filterDropdown.addEventListener('keydown',event=>{if(event.key==='Escape'){filterDropdown.open=false;filterDropdown.querySelector('summary').focus();event.stopPropagation();}});
+document.addEventListener('click',event=>{if(!filterDropdown.contains(event.target))filterDropdown.open=false;});
 $('map-cuisine').onchange=render;
-for(const b of document.querySelectorAll('[data-visit]'))b.onclick=()=>{visitFilter=b.dataset.visit;render();};
+$('visit-filter').onchange=()=>{visitFilter=$('visit-filter').value;render();};
+$('city-filter').onchange=()=>{selectedCity=$('city-filter').value;render();};
+$('country-filter').onchange=()=>{selectedCountry=$('country-filter').value;selectedCity='';render();};
 const openTools=()=>{$('tools-dialog').showModal();};
 $('top-tools').onclick=openTools;$('dock-tools').onclick=openTools;
 $('dock-add').onclick=()=>edit();
@@ -33,23 +39,36 @@ async function refresh(){rows=await all();render();}
 function render(){
  const focused=document.activeElement,focusKey=focused?.dataset?.categoryNote,selection=focusKey?[focused.selectionStart,focused.selectionEnd]:null,openNotes=new Set([...document.querySelectorAll('.category-notes[open]')].map(el=>el.dataset.noteKey));
  const active=rows.filter(r=>!r.deletedAt),cities=[...new Set(active.map(r=>r.city))].sort((a,b)=>a.localeCompare(b));
- if(selectedCity&&!cities.includes(selectedCity))selectedCity='';
  $('collection-summary').textContent=active.length?`${active.length} ${active.length===1?'place':'places'} · ${cities.length} ${cities.length===1?'city':'cities'}`:'Your next favorite starts here';
  document.body.dataset.view=view;
-
- $('cities').replaceChildren();for(const [index,city] of cities.entries()){const b=button(city,()=>{collection='all';selectedCity=city;render();});b.id='city-tab-'+index;b.setAttribute('role','tab');b.setAttribute('aria-controls','restaurants');b.setAttribute('aria-selected',String(collection==='all'&&city===selectedCity));$('cities').append(b);}
+ const region=regionRows(active,collection),countryKey=r=>restaurantCountry(r)||'__unknown';
+ const countries=[...new Set(region.map(countryKey))].sort((a,b)=>a.localeCompare(b));
+ if(selectedCountry&&!countries.includes(selectedCountry))selectedCountry='';
+ const fillSelect=(id,values,allText,selected,label=v=>v)=>{$(id).replaceChildren(...['',...values].map(v=>{const o=node('option',v?label(v):allText);o.value=v;return o;}));$(id).value=selected;};
+ fillSelect('country-filter',countries,'All countries',selectedCountry,c=>c==='__unknown'?'Country not set':c);
+ $('country-filter-label').hidden=collection==='us';
+ const countryScope=region.filter(r=>!selectedCountry||countryKey(r)===selectedCountry);
+ const scopedCities=[...new Set(countryScope.map(r=>r.city))].sort((a,b)=>a.localeCompare(b));
+ if(selectedCity&&!scopedCities.includes(selectedCity))selectedCity='';
+ fillSelect('city-filter',scopedCities,collection==='us'?'All US cities':'All cities',selectedCity);
+ const locationScope=countryScope.filter(r=>!selectedCity||r.city===selectedCity);
+ $('country-help').hidden=!locationScope.some(r=>!restaurantCountry(r));
  for(const [id,values]of [['city-options',cities],['cuisine-options',[...new Set(active.map(r=>r.cuisine))].sort()]]){$(id).replaceChildren(...values.map(v=>{const o=node('option');o.value=v;return o;}));}
- const q=norm($('search').value);let found=active.filter(r=>(!selectedCity||r.city===selectedCity)&&(!q||norm([r.name,r.city,r.cuisine,r.notes,r.address,...r.tags].join(' ')).includes(q)));
- const cuisine=$('map-cuisine').value;const cuisines=[...new Set(active.map(r=>r.cuisine))].sort((a,b)=>a.localeCompare(b));$('map-cuisine').replaceChildren(...['',...cuisines].map(c=>{const o=node('option',c||'All cuisines');o.value=c;return o;}));$('map-cuisine').value=cuisines.includes(cuisine)?cuisine:'';if(cuisine)found=found.filter(r=>r.cuisine===cuisine);
- if(collection==='michelin')found=sortMichelin(active.filter(r=>!q||norm([r.name,r.city,r.cuisine,r.notes,r.address,...r.tags].join(' ')).includes(q)));
- if(collection==='michelin'&&cuisine)found=found.filter(r=>r.cuisine===cuisine);
+ const q=norm($('search').value);
+ const cuisine=$('map-cuisine').value,cuisines=[...new Set(locationScope.map(r=>r.cuisine))].sort((a,b)=>a.localeCompare(b));
+ fillSelect('map-cuisine',cuisines,'All cuisines',cuisines.includes(cuisine)?cuisine:'');
+ let found=locationScope.filter(r=>(!q||norm([r.name,r.city,restaurantCountry(r),r.cuisine,r.notes,r.address,...r.tags].join(' ')).includes(q))&&(!$('map-cuisine').value||r.cuisine===$('map-cuisine').value));
+ if(collection==='michelin')found=sortMichelin(found);
  const pendingCount=found.filter(isToTry).length;
- for(const b of document.querySelectorAll('[data-visit]')){const status=b.dataset.visit;b.setAttribute('aria-pressed',String(visitFilter===status));b.querySelector('span').textContent=status==='all'?found.length:status==='to-try'?pendingCount:found.length-pendingCount;}
- $('visit-filters').hidden=!active.length;
+ for(const o of $('visit-filter').options)o.textContent=o.value==='all'?`All visits (${found.length})`:o.value==='visited'?`Visited (${found.length-pendingCount})`:`To try (${pendingCount})`;
+ $('visit-filter').value=visitFilter;
+ const filterCount=Number(Boolean(q));$('filter-count').textContent=String(filterCount);$('filter-count').hidden=!filterCount;
  if(visitFilter!=='all')found=found.filter(r=>visitFilter==='to-try'?isToTry(r):!isToTry(r));
  $('sort').disabled=collection==='michelin';$('sort').parentElement.hidden=collection==='michelin';
- $('tab-all').setAttribute('aria-selected',String(collection==='all'&&!selectedCity));$('tab-michelin').setAttribute('aria-selected',String(collection==='michelin'));$('michelin-count').textContent=active.filter(r=>r.michelinStars>0).length||'';$('restaurants').setAttribute('aria-labelledby',collection==='michelin'?'tab-michelin':selectedCity?'city-tab-'+cities.indexOf(selectedCity):'tab-all');
- $('city-heading').textContent=collection==='michelin'?'Michelin · stars, then your rating':selectedCity||'Your collection';$('count').textContent=`${found.length} ${found.length===1?'restaurant':'restaurants'}`;
+ for(const [id,name]of [['tab-all','us'],['tab-international','international'],['tab-michelin','michelin']])$(id).setAttribute('aria-selected',String(collection===name));
+ $('michelin-count').textContent=active.filter(r=>r.michelinStars>0).length||'';
+ $('restaurants').setAttribute('aria-labelledby',collection==='michelin'?'tab-michelin':collection==='international'?'tab-international':'tab-all');
+ $('city-heading').textContent=selectedCity||(selectedCountry==='__unknown'?'Country not set':selectedCountry)||(collection==='michelin'?'Michelin':collection==='international'?'International':'US');$('count').textContent=`${found.length} ${found.length===1?'restaurant':'restaurants'}`;
  $('empty').hidden=active.length>0||collection==='michelin'||view==='map';$('restaurants').replaceChildren();
  if((active.length||collection==='michelin')&&!found.length)$('restaurants').append(node('p','No restaurants match. Try another city, cuisine, visit filter, or search.','hint'));
  $('restaurants').hidden=view==='map';$('map-section').hidden=view!=='map';$('view-list').setAttribute('aria-pressed',String(view==='list'));$('view-map').setAttribute('aria-pressed',String(view==='map'));if(view==='map')maps.render(found);
@@ -97,11 +116,11 @@ function card(r,trash=false){
  const badge=node('div',undefined,`rating-badge${r.rating==null?' unrated':''}`);if(r.rating==null){badge.textContent='To try';badge.classList.add('to-try-badge');}else{badge.textContent=String(r.rating);badge.append(node('small',' / 5'));}
  badge.dataset.tone=r.rating==null?'unrated':r.rating>=4?'high':r.rating>=3?'mid':'low';side.append(badge,actions);box.append(body,side);return box;
 }
-function edit(r){$('edit-form').reset();$('edit-error').textContent='';$('edit-id').value=r?.id||'';for(const f of ['name','city','cuisine','rating','notes','address','url','latitude','longitude'])$(f).value=r?.[f]??(f==='city'?selectedCity:'');$('tags').value=(r?.tags||[]).join(', ');$('michelin-enabled').checked=(r?.michelinStars||0)>0;$('michelin-stars').value=String(r?.michelinStars||1);$('michelin-stars').disabled=!$('michelin-enabled').checked;$('editor-title').textContent=r?'Edit restaurant':'Add restaurant';$('editor').showModal();$('name').focus();}
+function edit(r){$('edit-form').reset();$('edit-error').textContent='';$('edit-id').value=r?.id||'';for(const f of ['name','city','country','cuisine','rating','notes','address','url','latitude','longitude'])$(f).value=r?.[f]??(f==='city'?selectedCity:'');$('country').value=r?restaurantCountry(r):'';$('tags').value=(r?.tags||[]).join(', ');$('michelin-enabled').checked=(r?.michelinStars||0)>0;$('michelin-stars').value=String(r?.michelinStars||1);$('michelin-stars').disabled=!$('michelin-enabled').checked;$('editor-title').textContent=r?'Edit restaurant':'Add restaurant';$('editor').showModal();$('name').focus();}
 $('add').onclick=()=>edit();$('empty-add').onclick=()=>edit();
-$('edit-form').addEventListener('submit',async event=>{event.preventDefault();if(busy)return;try{const raw=Object.fromEntries(['name','city','cuisine','rating','notes','address','url','latitude','longitude'].map(f=>[f,$(f).value]));raw.michelinStars=$('michelin-enabled').checked?Number($('michelin-stars').value):0;raw.tags=$('tags').value.split(',').map(t=>t.trim()).filter(Boolean);const value=clean(raw),old=rows.find(r=>r.id===$('edit-id').value),now=new Date().toISOString();busy=true;$('save').disabled=true;await write([{...old,...value,id:old?.id||crypto.randomUUID(),createdAt:old?.createdAt||now,updatedAt:now}]);await refresh();$('editor').close();toast('Restaurant saved on this device.');maps.locateMissing();}catch(e){$('edit-error').textContent=e.message;}finally{busy=false;$('save').disabled=false;}});
+$('edit-form').addEventListener('submit',async event=>{event.preventDefault();if(busy)return;try{const raw=Object.fromEntries(['name','city','country','cuisine','rating','notes','address','url','latitude','longitude'].map(f=>[f,$(f).value]));raw.michelinStars=$('michelin-enabled').checked?Number($('michelin-stars').value):0;raw.tags=$('tags').value.split(',').map(t=>t.trim()).filter(Boolean);const value=clean(raw),old=rows.find(r=>r.id===$('edit-id').value),now=new Date().toISOString();busy=true;$('save').disabled=true;await write([{...old,...value,id:old?.id||crypto.randomUUID(),createdAt:old?.createdAt||now,updatedAt:now}]);collection=restaurantCountry(value)==='United States'?'us':'international';selectedCountry='';selectedCity='';await refresh();$('editor').close();toast('Restaurant saved on this device.');maps.locateMissing();}catch(e){$('edit-error').textContent=e.message;}finally{busy=false;$('save').disabled=false;}});
 $('michelin-enabled').onchange=()=>{$('michelin-stars').disabled=!$('michelin-enabled').checked;};
-$('tab-all').onclick=()=>{collection='all';selectedCity='';render();};$('tab-michelin').onclick=()=>{collection='michelin';render();};
+for(const [id,name]of [['tab-all','us'],['tab-international','international'],['tab-michelin','michelin']])$(id).onclick=()=>{collection=name;selectedCountry='';selectedCity='';$('map-cuisine').value='';render();};
 document.querySelector('.collection-tabs').addEventListener('keydown',e=>{if(!['ArrowLeft','ArrowRight','Home','End'].includes(e.key))return;const buttons=[...document.querySelectorAll('.collection-tabs [role=tab]')],index=buttons.indexOf(e.target);if(index<0)return;e.preventDefault();const next=e.key==='Home'?0:e.key==='End'?buttons.length-1:(index+(e.key==='ArrowRight'?1:-1)+buttons.length)%buttons.length,id=buttons[next].id;buttons[next].click();$(id)?.focus();});
 $('search').oninput=render;$('sort').onchange=render;
 for(const b of document.querySelectorAll('[data-close]'))b.onclick=()=>$(b.dataset.close).close();
@@ -109,7 +128,7 @@ function startImport(kind='list'){reviewRows=[];$('import-text').value='';$('imp
 $('batch').onclick=()=>startImport();$('empty-import').onclick=()=>startImport();$('assistant').onclick=()=>startImport('assistant');
 $('import-file').onchange=async()=>{const file=$('import-file').files[0];if(!file)return;try{if(file.size>5_000_000)throw Error('Choose a file smaller than 5 MB.');$('import-text').value=await file.text();$('review').replaceChildren();$('import-actions').hidden=true;toast('File loaded. Choose Review import.');}catch(e){$('import-error').textContent=e.message;}};
 $('preview').onclick=()=>{try{reviewRows=parseImport($('import-text').value,{city:$('default-city').value,cuisine:$('default-cuisine').value});if(!reviewRows.length)throw Error('No restaurants found.');$('import-error').textContent='';renderReview();}catch(e){$('import-error').textContent=e.message;$('import-actions').hidden=true;$('review').replaceChildren();}};
-function reviewValues(){const list=[];for(const fieldset of $('review').children){if(!fieldset.querySelector('[data-include]').checked)continue;const raw={};for(const input of fieldset.querySelectorAll('[data-field]'))raw[input.dataset.field]=input.dataset.field==='tags'?input.value.split(';').map(t=>t.trim()).filter(Boolean):input.value;raw.deletedAt=reviewRows[Number(fieldset.dataset.index)].value.deletedAt??null;list.push(clean(raw));}return list;}
+function reviewValues(){const list=[];for(const fieldset of $('review').children){if(!fieldset.querySelector('[data-include]').checked)continue;const raw={...(reviewRows[Number(fieldset.dataset.index)].value.country!==undefined?{country:reviewRows[Number(fieldset.dataset.index)].value.country}:{})};for(const input of fieldset.querySelectorAll('[data-field]'))raw[input.dataset.field]=input.dataset.field==='tags'?input.value.split(';').map(t=>t.trim()).filter(Boolean):input.value;raw.deletedAt=reviewRows[Number(fieldset.dataset.index)].value.deletedAt??null;list.push(clean(raw));}return list;}
 function backupNotesFromInput(){const text=$('import-text').value.trim();if(!text.startsWith('{'))return undefined;const packet=JSON.parse(text);return packet.format==='restaurant-log-backup'?packet.categoryNotes:undefined;}
 function updateSummary(){try{const p=planImport(rows,reviewValues());$('import-summary').textContent=`${p.add.length} new entries · ${p.duplicates} duplicates skipped`;const notes=backupNotesFromInput();const count=notes&&typeof notes==='object'&&!Array.isArray(notes)?Object.keys(notes).length:0;if(count)$('import-summary').textContent+=` · ${count} category notes to merge`;$('commit-import').disabled=p.add.length===0&&!count;$('import-error').textContent='';}catch(e){$('import-summary').textContent='Correct the highlighted row information before saving.';$('commit-import').disabled=true;$('import-error').textContent=e.message;}}
 function renderReview(){$('review').replaceChildren();reviewRows.forEach((row,index)=>{const section=node('section',undefined,'review-row');section.dataset.index=String(index);const includeLabel=node('label',` Include restaurant ${index+1}`),include=node('input');include.type='checkbox';include.checked=true;include.dataset.include='';include.style.width='auto';include.style.display='inline';include.style.minHeight='auto';includeLabel.prepend(include);section.append(includeLabel);if(row.error)section.append(node('p',row.error,'error'));for(const f of ['name','city','cuisine','rating','notes','address','url','tags','michelinStars','latitude','longitude']){const label=node('label',f==='michelinStars'?'Michelin stars (0–3)':f==='rating'?'Rating (0–5, or blank)':f==='tags'?'Tags (separated by semicolons)':f.charAt(0).toUpperCase()+f.slice(1));const input=node(f==='notes'?'textarea':'input');input.dataset.field=f;input.setAttribute('aria-label',`${f} for restaurant ${index+1}`);const v=f==='michelinStars'?(row.value?.[f]??0):row.value?.[f];input.value=f==='tags'?(Array.isArray(v)?v.join('; '):''):(typeof v==='string'||typeof v==='number'?v:'');label.append(input);section.append(label);}if(row.value.deletedAt)section.append(node('p','This entry will be restored into Trash.','hint'));section.addEventListener('input',updateSummary);$('review').append(section);});$('import-actions').hidden=false;updateSummary();}

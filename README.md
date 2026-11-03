@@ -181,3 +181,9 @@ The visit filters use the notebook's existing classification: a saved rating, in
 
 ### Skip unmapped locations
 In **Map → Review unmapped**, **Use this location** saves the coordinates and keeps the dialog open on the next unresolved restaurant, preserving any skips in the current pass. **Skip for now** opens the next unresolved restaurant without changing its saved details or coordinates. Skipping works while a lookup is loading or after an error. At the end, the dialog closes with a summary; start Review unmapped again to revisit skipped places. Late lookup results cannot replace the next restaurant’s review.
+
+### Compact navigation — November 2026
+
+Collections are US, International, and Michelin. City selectors replace the city-tab list; International and Michelin also offer country selectors. Search opens from Filter, while sort, cuisine and All visits / Visited / To try share one compact row. The backup reminder lives in Tools → Export & transfer. Typography, list rows, headings and spacing are smaller; editing fields retain 16px text.
+
+Recognized cities use display-only country defaults. Optional Country in the restaurant editor overrides the default and survives JSON/CSV import and backup. Unknown cities remain reachable in both regional collections, labelled as needing a country; International offers Country not set. Navigation never rewrites or deletes saved entries. Filters apply equally to the list and map, while exports still include the entire notebook.

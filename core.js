@@ -7,6 +7,25 @@ export const canonicalCuisine = (city,cuisine) => isNYC(city)&&isKoreanPocha(cui
 export const key = r => [r.name,r.city,canonicalCuisine(r.city,r.cuisine),r.address].map(norm).join('\u0000');
 export const isToTry = row => row.rating == null;
 
+
+// Only recognized city names receive a default country. Explicit country wins;
+// unfamiliar/ambiguous cities remain visible in both regional collections.
+export const canonicalCountry = value => {
+ const text=String(value??'').trim(),aliases={us:'United States',usa:'United States','u.s.':'United States','u.s.a.':'United States','united states of america':'United States',uk:'United Kingdom','u.k.':'United Kingdom',england:'United Kingdom',scotland:'United Kingdom',wales:'United Kingdom',korea:'South Korea','republic of korea':'South Korea'};
+ return aliases[norm(text)]||text.toLocaleLowerCase().replace(/\b\p{L}/gu,c=>c.toLocaleUpperCase());
+};
+const countryCities={
+ 'United States':['Cleveland','Strongsville','Parma','Lakewood','Rocky River','Westlake','North Royalton','Berea','Beachwood','Shaker Heights','Cleveland Heights','Tremont','NYC','New York','New York City','Manhattan','Brooklyn','Queens','Chicago','Napa','Napa Valley','Yountville','St. Helena','Saint Helena','Oakville','Rutherford','Calistoga','Sonoma','San Francisco','Los Angeles','San Diego','Boston','Seattle','Portland, OR','Portland, ME','Miami','Las Vegas','Austin','Dallas','Houston','Washington DC','Washington, DC','Philadelphia','Atlanta','Detroit','Columbus','Cincinnati','Pittsburgh','St. Louis','Saint Louis','New Orleans','Honolulu','Denver'],
+ 'United Kingdom':['London','Edinburgh','Glasgow'], 'France':['Paris','Eze','Èze','Nice','Lyon','Bordeaux','Cannes','Saint-Jean-Cap-Ferrat'],
+ 'Monaco':['Monaco','Monte Carlo','Monte-Carlo'], 'Japan':['Tokyo','Kyoto','Osaka'], 'South Korea':['Seoul','Busan'],
+ 'Italy':['Rome','Roma','Florence','Firenze','Milan','Milano','Venice','Venezia'], 'Spain':['Madrid','Barcelona','San Sebastián','San Sebastian'],
+ 'Canada':['Toronto','Vancouver','Montreal','Montréal','Quebec City'], 'Germany':['Berlin','Munich','Frankfurt'],
+ 'Portugal':['Lisbon','Porto'], 'Netherlands':['Amsterdam'], 'Greece':['Athens'], 'Singapore':['Singapore'], 'Thailand':['Bangkok']
+};
+const cityCountries=new Map(Object.entries(countryCities).flatMap(([country,cities])=>cities.map(city=>[norm(city),country])));
+export function restaurantCountry(row){return row.country?canonicalCountry(row.country):cityCountries.get(norm(row.city))||'';}
+export function regionRows(rows,region){return rows.filter(row=>{const country=restaurantCountry(row);return region==='michelin'?row.michelinStars>0:!country||(region==='us'?country==='United States':country!=='United States');});}
+
 // A readable, device-local snapshot, not a restore format. Do not clean or round
 // here: exports retain the exact saved rating and original tasting-note text.
 export function readableNotebook(rows, categoryNotes = {}, exportedAt = new Date().toISOString()) {
@@ -29,6 +48,7 @@ export function readableNotebook(rows, categoryNotes = {}, exportedAt = new Date
     lines.push(`RESTAURANT ${index + 1}`);
     field('Name', row.name || '(Unnamed restaurant)');
     field('City', row.city || '(Not specified)');
+    field('Country', row.country);
     field('Cuisine', row.cuisine || '(Not specified)');
     lines.push(`Status: ${isToTry(row) ? 'To try' : 'Visited'}`,
       `Overall rating: ${isToTry(row) ? 'Not rated' : String(row.rating) + ' / 5'}`);
@@ -68,6 +88,7 @@ export function clean(input, defaults = {}) {
     if (value.length > (field === 'notes' ? 20000 : 1000)) throw Error(`${field} is too long.`);
     out[field] = value.trim();
   }
+  if (input.country !== undefined) {if(typeof input.country!=='string'||input.country.length>1000)throw Error('Country must be text under 1,000 characters.');out.country=canonicalCountry(input.country);}
   if (!out.name || !out.city || !out.cuisine) throw Error('Name, city, and cuisine are required.');
   out.cuisine = canonicalCuisine(out.city,out.cuisine);
   for(const [field,limit] of [['latitude',90],['longitude',180]]){
@@ -110,7 +131,7 @@ export function parseImport(text, defaults={}) {
     if(Array.isArray(data))raw=data;
     else {if(!['restaurant-log-backup','restaurant-log-import'].includes(data.format)||data.version!==VERSION||!Array.isArray(data.restaurants))throw Error('Unsupported JSON format or version.');raw=data.restaurants;}
   } else {
-    const rows=parseCSV(t);const headers=rows[0].map(norm);const allowed=['name','city','cuisine','rating','notes','address','url','tags','michelinstars','latitude','longitude'];
+    const rows=parseCSV(t);const headers=rows[0].map(norm);const allowed=['name','city','country','cuisine','rating','notes','address','url','tags','michelinstars','latitude','longitude'];
     if(headers.includes('name')) {if(headers.some(h=>!allowed.includes(h))||new Set(headers).size!==headers.length)throw Error('CSV headers must be unique: name, city, cuisine, rating, notes, address, url, tags, michelinStars.');raw=rows.slice(1).map(row=>{if(row.length>headers.length)throw Error('CSV row has more values than its header.');const obj=Object.fromEntries(headers.map((h,i)=>[h,row[i]??'']));if(obj.michelinstars!==undefined){obj.michelinStars=obj.michelinstars||0;delete obj.michelinstars;}if(obj.tags!==undefined)obj.tags=obj.tags.split(';').map(t=>t.trim()).filter(Boolean);return obj;});}
     else raw=t.split(/\r?\n/).map(name=>({name:name.trim()})).filter(r=>r.name);
   }
