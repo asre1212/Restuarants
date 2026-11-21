@@ -10,6 +10,9 @@ const $=id=>document.getElementById(id);
 const node=(tag,text,cls)=>{const n=document.createElement(tag);if(text!==undefined)n.textContent=text;if(cls)n.className=cls;return n;};
 const button=(text,action,cls)=>{const b=node('button',text,cls);b.type='button';b.addEventListener('click',action);return b;};
 const categoryNoteDrafts=new Map();
+// Expansion is for this page session only, never persisted with the notebook.
+const expandedCategories=new Set();
+let renderedCategorySearch=false;
 const pendingCategoryNotes=new Set(),inbox=createInboxClient();
 let checkingInbox=false,privateSharing;
 let collection='us',selectedCountry='',view='list',visitFilter='all';
@@ -37,6 +40,12 @@ function toast(text){$('status').textContent=text;$('status').hidden=false;clear
 function fail(error){console.error(error);toast('Could not finish: '+error.message);}
 async function refresh(){rows=await all();render();}
 function render(){
+ if(!renderedCategorySearch){
+  for(const detail of $('restaurants').querySelectorAll('details[data-category-key]')){
+   if(detail.open)expandedCategories.add(detail.dataset.categoryKey);
+   else expandedCategories.delete(detail.dataset.categoryKey);
+  }
+ }
  const focused=document.activeElement,focusKey=focused?.dataset?.categoryNote,selection=focusKey?[focused.selectionStart,focused.selectionEnd]:null,openNotes=new Set([...document.querySelectorAll('.category-notes[open]')].map(el=>el.dataset.noteKey));
  const active=rows.filter(r=>!r.deletedAt),cities=[...new Set(active.map(r=>r.city))].sort((a,b)=>a.localeCompare(b));
  $('collection-summary').textContent=active.length?`${active.length} ${active.length===1?'place':'places'} · ${cities.length} ${cities.length===1?'city':'cities'}`:'Your next favorite starts here';
@@ -55,6 +64,7 @@ function render(){
  $('country-help').hidden=!locationScope.some(r=>!restaurantCountry(r));
  for(const [id,values]of [['city-options',cities],['cuisine-options',[...new Set(active.map(r=>r.cuisine))].sort()]]){$(id).replaceChildren(...values.map(v=>{const o=node('option');o.value=v;return o;}));}
  const q=norm($('search').value);
+ renderedCategorySearch=Boolean(q);
  const cuisine=$('map-cuisine').value,cuisines=[...new Set(locationScope.map(r=>r.cuisine))].sort((a,b)=>a.localeCompare(b));
  fillSelect('map-cuisine',cuisines,'All cuisines',cuisines.includes(cuisine)?cuisine:'');
  let found=locationScope.filter(r=>(!q||norm([r.name,r.city,restaurantCountry(r),r.cuisine,r.notes,r.address,...r.tags].join(' ')).includes(q))&&(!$('map-cuisine').value||r.cuisine===$('map-cuisine').value));
@@ -81,7 +91,10 @@ function render(){
  $('backup-notice').hidden=!active.length||!(window.backupDue??true);
 }
 function categorySection(group,depth=0){
- const detail=node('details',undefined,'category'+(depth?' subcategory':''));detail.open=true;const summary=node('summary',group.label);summary.append(node('span',String(group.count),'category-count'));detail.append(summary,categoryNote(group.path));
+ const detail=node('details',undefined,'category'+(depth?' subcategory':''));
+ detail.dataset.categoryKey=JSON.stringify([collection,selectedCountry,selectedCity,...group.path]);
+ detail.open=renderedCategorySearch||expandedCategories.has(detail.dataset.categoryKey);
+ const summary=node('summary',group.label);summary.append(node('span',String(group.count),'category-count'));detail.append(summary,categoryNote(group.path));
  appendListings(detail,sortRestaurants(group.rows,$('sort').value));for(const child of group.children)detail.append(categorySection(child,depth+1));return detail;
 }
 function categoryNote(path){
@@ -116,7 +129,24 @@ function card(r,trash=false){
  const badge=node('div',undefined,`rating-badge${r.rating==null?' unrated':''}`);if(r.rating==null){badge.textContent='To try';badge.classList.add('to-try-badge');}else{badge.textContent=String(r.rating);badge.append(node('small',' / 5'));}
  badge.dataset.tone=r.rating==null?'unrated':r.rating>=4?'high':r.rating>=3?'mid':'low';side.append(badge,actions);box.append(body,side);return box;
 }
-function edit(r){$('edit-form').reset();$('edit-error').textContent='';$('edit-id').value=r?.id||'';for(const f of ['name','city','country','cuisine','rating','notes','address','url','latitude','longitude'])$(f).value=r?.[f]??(f==='city'?selectedCity:'');$('country').value=r?restaurantCountry(r):'';$('tags').value=(r?.tags||[]).join(', ');$('michelin-enabled').checked=(r?.michelinStars||0)>0;$('michelin-stars').value=String(r?.michelinStars||1);$('michelin-stars').disabled=!$('michelin-enabled').checked;$('editor-title').textContent=r?'Edit restaurant':'Add restaurant';$('editor').showModal();$('name').focus();}
+// Native selects work on iPhone without relying on datalist/keyboard suggestions.
+for(const [id,field] of [['city-picker','city'],['category-picker','cuisine']]){
+ const picker=$(id);
+ picker.onchange=()=>{if(picker.value)$(field).value=picker.value;};
+ $(field).addEventListener('input',()=>{picker.value=[...picker.options].some(o=>o.value===$(field).value)?$(field).value:'';});
+}
+function populateEditorPickers(){
+ const active=rows.filter(r=>!r.deletedAt);
+ for(const [id,field,prompt] of [['city-picker','city','Choose a saved city'],['category-picker','cuisine','Choose a saved category']]){
+  const values=[...new Set(active.map(r=>r[field]).filter(Boolean))].sort((a,b)=>a.localeCompare(b));
+  const picker=$(id);
+  const option=(value,label)=>{const el=node('option',label);el.value=value;return el;};
+  picker.replaceChildren(option('',prompt),...values.map(value=>option(value,value)));
+  picker.hidden=!values.length;
+  picker.value=values.includes($(field).value)?$(field).value:'';
+ }
+}
+function edit(r){$('edit-form').reset();$('edit-error').textContent='';$('edit-id').value=r?.id||'';for(const f of ['name','city','country','cuisine','rating','notes','address','url','latitude','longitude'])$(f).value=r?.[f]??(f==='city'?selectedCity:'');$('country').value=r?restaurantCountry(r):'';$('tags').value=(r?.tags||[]).join(', ');$('michelin-enabled').checked=(r?.michelinStars||0)>0;$('michelin-stars').value=String(r?.michelinStars||1);$('michelin-stars').disabled=!$('michelin-enabled').checked;$('editor-title').textContent=r?'Edit restaurant':'Add restaurant';populateEditorPickers();$('editor').showModal();$('name').focus();}
 $('add').onclick=()=>edit();$('empty-add').onclick=()=>edit();
 $('edit-form').addEventListener('submit',async event=>{event.preventDefault();if(busy)return;try{const raw=Object.fromEntries(['name','city','country','cuisine','rating','notes','address','url','latitude','longitude'].map(f=>[f,$(f).value]));raw.michelinStars=$('michelin-enabled').checked?Number($('michelin-stars').value):0;raw.tags=$('tags').value.split(',').map(t=>t.trim()).filter(Boolean);const value=clean(raw),old=rows.find(r=>r.id===$('edit-id').value),now=new Date().toISOString();busy=true;$('save').disabled=true;await write([{...old,...value,id:old?.id||crypto.randomUUID(),createdAt:old?.createdAt||now,updatedAt:now}]);collection=restaurantCountry(value)==='United States'?'us':'international';selectedCountry='';selectedCity='';await refresh();$('editor').close();toast('Restaurant saved on this device.');maps.locateMissing();}catch(e){$('edit-error').textContent=e.message;}finally{busy=false;$('save').disabled=false;}});
 $('michelin-enabled').onchange=()=>{$('michelin-stars').disabled=!$('michelin-enabled').checked;};

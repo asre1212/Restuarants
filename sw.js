@@ -1,6 +1,6 @@
 // Bump this version for every changed app-shell release. Never touch IndexedDB.
 const PREFIX = 'table-notes-shell-' + self.registration.scope;
-const CACHE = PREFIX + 'v24';
+const CACHE = PREFIX + 'v25';
 const FILES = ['./','./index.html','./style.css','./app.js','./hosting.js','./updates.js','./backup.js','./sharing.js','./sharing-ui.js','./inbox-client.js','./map.js','./vendor/leaflet.js','./vendor/leaflet.css','./core.js','./db.js','./manifest.webmanifest','./icons/favicon-32.png','./icons/michelin-star.png','./icons/restaurant-192.png','./icons/restaurant-512.png','./icons/apple-touch-icon-v2.png'];
 const URLS = FILES.map(file => new URL(file,self.registration.scope).href);
 self.addEventListener('install',event=>event.waitUntil(caches.open(CACHE).then(cache=>cache.addAll(URLS))));

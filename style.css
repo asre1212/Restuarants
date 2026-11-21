@@ -128,6 +128,8 @@ input, select, textarea { display: block; width: 100%; min-height: 46px; border:
 input::placeholder, textarea::placeholder { color: #818778; opacity: 1; }
 textarea { resize: vertical; line-height: 1.6; }
 .two { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+.editor-fields > div { min-width: 0; }
+.editor-fields select { text-overflow: ellipsis; }
 dialog { border: 1px solid var(--line); border-radius: 18px; padding: 22px; background: var(--paper); color: var(--text); width: min(640px, calc(100% - 24px)); max-height: 90dvh; box-shadow: 0 22px 80px #203c3530; }
 dialog::backdrop { background: #172a2370; backdrop-filter: blur(5px); }
 .dialog-heading { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin-bottom: 14px; }

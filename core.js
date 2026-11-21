@@ -1,6 +1,7 @@
 export const VERSION = 1;
 export const roundQuarter = rating => rating == null ? null : Math.round(rating * 4) / 4;
 export const norm = value => String(value ?? '').normalize('NFKC').trim().toLocaleLowerCase();
+export const canonicalCity = city => norm(city)==='nyc'?'NYC':city;
 export const isNYC = city => ['nyc','new york','new york city'].includes(norm(city));
 export const isKoreanPocha = cuisine => /^korean\s*(?:[-–—/·›>]|::)\s*pocha$/i.test(String(cuisine ?? '').trim());
 export const canonicalCuisine = (city,cuisine) => isNYC(city)&&isKoreanPocha(cuisine)?'Korean / Pocha':cuisine;
@@ -90,6 +91,7 @@ export function clean(input, defaults = {}) {
   }
   if (input.country !== undefined) {if(typeof input.country!=='string'||input.country.length>1000)throw Error('Country must be text under 1,000 characters.');out.country=canonicalCountry(input.country);}
   if (!out.name || !out.city || !out.cuisine) throw Error('Name, city, and cuisine are required.');
+  out.city = canonicalCity(out.city);
   out.cuisine = canonicalCuisine(out.city,out.cuisine);
   for(const [field,limit] of [['latitude',90],['longitude',180]]){
     const value=input[field];out[field]=value===undefined||value===null||value===''?null:Number(value);
