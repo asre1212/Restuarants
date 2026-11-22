@@ -4,7 +4,8 @@ export const norm = value => String(value ?? '').normalize('NFKC').trim().toLoca
 export const canonicalCity = city => norm(city)==='nyc'?'NYC':city;
 export const isNYC = city => ['nyc','new york','new york city'].includes(norm(city));
 export const isKoreanPocha = cuisine => /^korean\s*(?:[-–—/·›>]|::)\s*pocha$/i.test(String(cuisine ?? '').trim());
-export const canonicalCuisine = (city,cuisine) => isNYC(city)&&isKoreanPocha(cuisine)?'Korean / Pocha':cuisine;
+export const isBurgerCuisine = cuisine => ['burger','burgers'].includes(norm(cuisine));
+export const canonicalCuisine = (city,cuisine) => isBurgerCuisine(cuisine)?'Burgers':isNYC(city)&&isKoreanPocha(cuisine)?'Korean / Pocha':cuisine;
 export const key = r => [r.name,r.city,canonicalCuisine(r.city,r.cuisine),r.address].map(norm).join('\u0000');
 export const isToTry = row => row.rating == null;
 
@@ -160,10 +161,10 @@ export function tastingNotes(notes){
  return {items,general};
 }
 
-// Keep source cuisine names intact; derive nested headings for display.
+// Derive nested headings from canonical cuisine names.
 export function categoryTree(rows){
  const root={children:[]};
- for(const row of rows){const parts=row.cuisine.split(/\s*(?:·|›|>|::|,)\s*|\s+\/\s+/).filter(Boolean);let parent=root;const path=[];
+ for(const row of rows){const parts=canonicalCuisine(row.city,row.cuisine).split(/\s*(?:·|›|>|::|,)\s*|\s+\/\s+/).filter(Boolean);let parent=root;const path=[];
   for(const label of parts){path.push(label);let child=parent.children.find(c=>norm(c.label)===norm(label));if(!child){child={label,path:[...path],rows:[],children:[],count:0};parent.children.push(child);}child.count++;parent=child;}parent.rows.push(row);
  }
  const order=items=>{items.sort((a,b)=>a.label.localeCompare(b.label));for(const item of items)order(item.children);};order(root.children);return root.children;

@@ -1,4 +1,4 @@
-import {planImport,key,roundQuarter,withVisitStatus,canonicalCity,canonicalCuisine,isNYC,isKoreanPocha,norm} from './core.js';
+import {planImport,key,roundQuarter,withVisitStatus,canonicalCity,canonicalCuisine,isNYC,isKoreanPocha,isBurgerCuisine,norm} from './core.js';
 import {backupRecords,stableRecord} from './backup.js';
 const DATABASE = 'table-notes-local-v1';
 let db;
@@ -29,6 +29,7 @@ export function sharingSnapshot(){return new Promise((resolve,reject)=>{
 
 // Restore in one transaction. Same-name records remain separate. An ID conflict
 // preserves both versions under a repeatable alternate ID, without overwrites.
+const normalizeRestoredAliases=row=>({...row,city:canonicalCity(row.city),cuisine:isBurgerCuisine(row.cuisine)?'Burgers':row.cuisine});
 export async function restoreNotebook(packet){
  const incoming=await backupRecords(packet);
  const result=await new Promise((resolve,reject)=>{
@@ -37,8 +38,8 @@ export async function restoreNotebook(packet){
   rows.onsuccess=()=>{
    const current=new Map(rows.result.map(row=>[row.id,row]));
    for(const {row,conflictId} of incoming){
-    const normalized={...row,city:canonicalCity(row.city)};let next=normalized;const existing=current.get(row.id);
-    if(existing){if(stableRecord({...existing,city:canonicalCity(existing.city)})===stableRecord(normalized)){kept++;continue;}next={...normalized,id:conflictId};if(current.has(conflictId)){kept++;continue;}copies++;}
+    const normalized=normalizeRestoredAliases(row);let next=normalized;const existing=current.get(row.id);
+    if(existing){if(stableRecord(normalizeRestoredAliases(existing))===stableRecord(normalized)){kept++;continue;}next={...normalized,id:conflictId};if(current.has(conflictId)){kept++;continue;}copies++;}
     records.put(next);current.set(next.id,next);added++;
    }
   };
@@ -90,7 +91,7 @@ export function reconcileVisitStatus(){return new Promise((resolve,reject)=>{
  tx.oncomplete=()=>{notebookChanged();resolve();};tx.onerror=()=>reject(tx.error);tx.onabort=()=>reject(tx.error||Error('Could not update To try entries.'));
 });}
 
-// Reconcile NYC city labels and NYC Pocha categories, including Trash. Never merge or delete restaurant records,
+// Reconcile city and cuisine aliases, including Trash. Never merge or delete restaurant records,
 // even when two entries would now have the same import key.
 export function reconcilePochaCategories(){return new Promise((resolve,reject)=>{
  const tx=db.transaction(['restaurants','settings'],'readwrite'),records=tx.objectStore('restaurants'),settings=tx.objectStore('settings');
@@ -103,8 +104,9 @@ export function reconcilePochaCategories(){return new Promise((resolve,reject)=>
    if(!Array.isArray(path)||path.length<2)continue;
    const city=canonicalCity(path[0]);
    const isPocha=(city==='*'||isNYC(city))&&(path.length===2&&isKoreanPocha(path[1])||path.length===3&&norm(path[1])==='korean'&&norm(path[2])==='pocha');
-   if(city===path[0]&&!isPocha)continue;
-   const target='category-note:'+JSON.stringify([city,...(isPocha?['Korean','Pocha']:path.slice(1))]),marker='category-alias-copied:'+source;
+   const isBurgers=path.length===2&&isBurgerCuisine(path[1]);
+   if(city===path[0]&&!isPocha&&!isBurgers)continue;
+   const target='category-note:'+JSON.stringify([city,...(isPocha?['Korean','Pocha']:isBurgers?['Burgers']:path.slice(1))]),marker='category-alias-copied:'+source;
    if(source===target||values.get(marker)===value)continue;
    const current=values.get(target),hasCopy=typeof current==='string'&&('\n\n'+current+'\n\n').includes('\n\n'+value+'\n\n');
    const merged=hasCopy?current:typeof current==='string'&&current&&!('\n\n'+value+'\n\n').includes('\n\n'+current+'\n\n')?current+'\n\n'+value:value;
@@ -113,7 +115,7 @@ export function reconcilePochaCategories(){return new Promise((resolve,reject)=>
    settings.put({key:marker,value});
   }
  };
- tx.oncomplete=()=>{notebookChanged();resolve();};tx.onerror=()=>reject(tx.error);tx.onabort=()=>reject(tx.error||Error('Could not update saved NYC labels and category notes.'));
+ tx.oncomplete=()=>{notebookChanged();resolve();};tx.onerror=()=>reject(tx.error);tx.onabort=()=>reject(tx.error||Error('Could not update saved city and category labels.'));
 });}
 
 export function categoryNotes(){return new Promise((resolve,reject)=>{const r=db.transaction('settings').objectStore('settings').getAll();r.onsuccess=()=>resolve(Object.fromEntries(r.result.filter(r=>r.key.startsWith('category-note:')).map(r=>[r.key.slice(14),r.value])));r.onerror=()=>reject(r.error);});}
