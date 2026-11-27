@@ -1,205 +1,174 @@
-/* Local, opt-in two-copy recovery. App adapters explicitly select saved data. */
-(function (g) {
-  "use strict";
-  const format = 'local-auto-backup', version = 1;
-  const copy = JSON.stringify;
-  function create({id,name,read,validate,apply}) {
-    if (!/^[a-z0-9-]+$/.test(id) || [read,validate,apply].some(x=>typeof x!=='function')) throw new Error('Invalid Auto Backup adapter');
-    const key='auto-backup-v1:'+id;
-    const blank=()=>({enabled:false,slots:[],seq:0,folder:null});
-    let opening;
-    function db() {
-      return opening ||= new Promise((resolve,reject)=>{
-        const req=g.indexedDB.open('journal-auto-backup-v1',1);
-        req.onupgradeneeded=()=>req.result.createObjectStore('states');
-        req.onsuccess=()=>{const d=req.result;d.onversionchange=()=>{d.close();opening=null;};resolve(d);};
-        req.onerror=()=>{opening=null;reject(req.error);};
-        req.onblocked=()=>{opening=null;reject(new Error('Close other app tabs and reload.'));};
-      });
-    }
-    function transact(edit) {
-      return db().then(d=>new Promise((res,rej)=>{
-        const tx=d.transaction('states',edit?'readwrite':'readonly'),store=tx.objectStore('states'),r=store.get(key);
-        let out,error;
-        r.onsuccess=()=>{try{
-          const entry=r.result??blank();
-          if(typeof entry.enabled!=='boolean'||!Array.isArray(entry.slots)||entry.slots.length>2||!Number.isSafeInteger(entry.seq)||entry.seq<0)throw new Error('Unreadable Auto Backup metadata.');
-          out=edit?edit(entry):entry;
-          if(edit&&out!==entry)store.put(out,key);
-        }catch(e){error=e;tx.abort();}};
-        tx.oncomplete=()=>res(out);
-        tx.onabort=()=>rej(error||tx.error||new Error('Could not save device backups.'));
-      }));
-    }
-    const state=()=>transact();
-    const unpack=item=>{
-      if(!item||item.format!==format||item.version!==version||item.app!==id||typeof item.savedAt!=='string'||!Number.isSafeInteger(item.seq))throw new Error('That file is not an Auto Backup for '+name+'.');
-      return validate(item.data);
-    };
-    let panel, issue='', external='', busy=Promise.resolve(), captures=Promise.resolve(), renderId=0;
-    const supportsFolder=typeof g.showDirectoryPicker==='function' && !!g.indexedDB;
-    function useHandle(mode,action) {
+/* Copies go only to an explicitly selected external folder. IndexedDB holds the permission handle, not notebook data. */
+(function (w) {
+  'use strict';
+  const format='local-auto-backup',version=1;
+  const stringify=JSON.stringify;
+  function create({id,name,read,validate,apply}){
+    if(!/^[a-z0-9-]+$/.test(id)||[read,validate,apply].some(x=>typeof x!=='function'))throw Error('Invalid Auto Backup adapter.');
+    const available=typeof w.showDirectoryPicker==='function'&&!!w.indexedDB&&!!w.crypto?.subtle;
+    let panel,config=null,opening,issue='',queue=Promise.resolve(),renderId=0;
+    function settings(action){
       return new Promise((resolve,reject)=>{
-        const req=indexedDB.open('local-auto-backup-handles-v1',1);
-        req.onupgradeneeded=()=>req.result.createObjectStore('handles');
-        req.onerror=()=>reject(req.error);
-        req.onsuccess=()=>{
-          const db=req.result;
-          try {
-            const tx=db.transaction('handles',mode);
-            const op=action(tx.objectStore('handles'));
-            tx.oncomplete=()=>{db.close();resolve(op.result);};
-            tx.onabort=tx.onerror=()=>{db.close();reject(tx.error||op.error);};
-          }catch(e){db.close();reject(e);}
+        if(!available)return resolve(null);
+        const request=w.indexedDB.open('journal-external-folder-v1',1);
+        request.onupgradeneeded=()=>request.result.createObjectStore('folders');
+        request.onerror=()=>reject(request.error);
+        request.onblocked=()=>reject(Error('Close other app tabs and reopen Auto Backup.'));
+        request.onsuccess=()=>{
+          const db=request.result,tx=db.transaction('folders',action?'readwrite':'readonly'),s=tx.objectStore('folders');
+          const r=action?action(s):s.get(id);
+          tx.oncomplete=()=>{db.close();resolve(r.result??null);};
+          tx.onabort=()=>{db.close();reject(tx.error||r.error);};
         };
       });
     }
-    async function syncFolder(s,allowPrompt) {
-      if(!supportsFolder||!s.folder||!s.slots.length)return;
-      const handle=await useHandle('readonly',db=>db.get(id));
-      if(!handle)throw new Error('Reconnect the backup folder.');
-      const mode={mode:'readwrite'};
-      let permission=await handle.queryPermission(mode);
-      if(permission!=='granted'&&allowPrompt)permission=await handle.requestPermission(mode);
-      if(permission!=='granted')throw new Error('Reconnect the backup folder to resume Files copies.');
-      // Previous first. The opposite slot remains intact while one slot is replaced.
-      for(const entry of s.slots.slice().reverse()){
-        const basename=id+'-auto-backup-'+s.folder.token+'-'+(entry.seq%2+1)+'.json';
-        let file;
-        try{
-          file=await handle.getFileHandle(basename);
-          const content=await (await file.getFile()).text();
-          if(!content)throw new Error('A file name is in use. Reconnect the backup folder.');
-          {
-            const old=JSON.parse(content);
-            if(old.folderToken!==s.folder.token||old.app!==id||old.format!==format)throw new Error('A file name is in use. Choose another backup folder.');
-            if(old.seq>=entry.seq)continue;
-          }
-        }catch(e){if(e.name!=='NotFoundError')throw e;file=await handle.getFileHandle(basename,{create:true});}
-        const body=copy({...entry,folderToken:s.folder.token});
-        const writer=await file.createWritable();
-        try{await writer.write(body);await writer.close();}
-        catch(e){try{await writer.abort();}catch{}throw e;}
-        if(await (await file.getFile()).text()!==body)throw new Error('The Files copy did not verify.');
-      }
-      external='Files folder copy verified.';
+    function configured(){
+      if(!available)return Promise.resolve(null);
+      if(!opening)opening=settings().then(value=>config=value).catch(e=>{opening=null;throw e;});
+      return opening;
     }
-    function queue(s){
-      if(!supportsFolder||!s.folder)return;
-      busy=busy.then(async()=>{const current=await state();if(current.enabled&&current.folder?.token===s.folder?.token)await syncFolder(current,false);}).catch(e=>{external=e.message||'Could not save to the folder.';}).finally(update);
+    async function saveConfig(next){
+      if(next)await settings(s=>s.put(next,id));
+      else await settings(s=>s.delete(id));
+      config=next;opening=Promise.resolve(next);
+    }
+    function unpack(item){
+      if(!item||item.format!==format||item.version!==version||item.app!==id||typeof item.savedAt!=='string'||!Number.isSafeInteger(item.seq)||item.seq<1)throw Error('Not an Auto Backup for '+name+'.');
+      return validate(item.data);
+    }
+    async function digest(data){
+      const bytes=await w.crypto.subtle.digest('SHA-256',new TextEncoder().encode(stringify(data)));
+      return Array.from(new Uint8Array(bytes),b=>b.toString(16).padStart(2,'0')).join('');
+    }
+    function filename(c,slot){return id+'-auto-backup-'+c.token+'-'+slot+'.json';}
+    async function entries(c){
+      const out=[];
+      for(const slot of [1,2]){
+        let handle;
+        try{handle=await c.handle.getFileHandle(filename(c,slot));}
+        catch(e){if(e.name==='NotFoundError')continue;throw e;}
+        const file=await handle.getFile();
+        if(file.size>150_000_000)throw Error('A backup file is too large to verify. Its contents were not changed.');
+        const raw=await file.text();let item;
+        try{item=JSON.parse(raw);}catch{throw Error('A backup filename is already in use. Its contents were not changed.');}
+        if(item?.folderToken!==c.token||item?.app!==id)throw Error('A backup filename is already in use. Its contents were not changed.');
+        unpack(item);
+        if(await digest(item.data)!==item.digest)throw Error('An existing backup failed verification and was not overwritten.');
+        out.push({slot,handle,item});
+      }
+      return out.sort((a,b)=>b.item.seq-a.item.seq);
+    }
+    async function write(c,data){
+      const current=await settings();
+      if(!current||current.token!==c.token||!current.enabled)return false;
+      const permission=await c.handle.queryPermission({mode:'readwrite'});
+      if(permission!=='granted')throw Error('Reconnect the selected folder to resume Auto Backup.');
+      const list=await entries(c);
+      const hash=await digest(data);
+      if(list[0]?.item.digest===hash)return false;
+      // Overwrite only the older verified, app-owned slot. The other file remains intact.
+      const slot=list.length===2?list[1].slot:(list[0]?.slot===1?2:1);
+      const old=list.find(x=>x.slot===slot);
+      const item={format,version,app:id,folderToken:c.token,savedAt:new Date().toISOString(),seq:(list[0]?.item.seq||0)+1,digest:hash,data};
+      const body=stringify(item);
+      if(new Blob([body]).size>150_000_000)throw Error('This backup is too large to save safely.');
+      const file=old?.handle||await c.handle.getFileHandle(filename(c,slot),{create:true});
+      const stream=await file.createWritable({mode:'exclusive'});
+      try{await stream.write(body);await stream.close();}
+      catch(e){try{await stream.abort();}catch{}throw e;}
+      if(await (await file.getFile()).text()!==body)throw Error('Could not verify the saved folder copy.');
+      issue='Backup saved to the selected folder.';
+      return true;
     }
     function capture(value){
+      if(!available)return Promise.resolve(false);
+      // Read only when an enabled, persistent external destination is writable.
+      const prepared=configured().then(async c=>{
+        if(!c?.enabled)return null;
+        if(await c.handle.queryPermission({mode:'readwrite'})!=='granted')throw Error('Reconnect the selected folder to resume Auto Backup.');
+        return {c,data:validate(await (typeof value==='function'?value():value===undefined?read():value))};
+      }).then(x=>({x}),error=>({error}));
       const run=async()=>{
         try{
-          const previous=await state();
-          if(!previous.enabled)return false;
-          const data=validate(await (typeof value==='function'?value():value===undefined?read():value));
-          const json=copy(data);
-          const next=await transact(s=>{
-            if(!s.enabled || json===copy(s.slots[0]?.data))return s;
-            const seq=s.seq+1;
-            const item={format,version,app:id,savedAt:new Date().toISOString(),seq,data};
-            return {...s,seq,slots:[item,...s.slots].slice(0,2)};
-          });
-          issue='';queue(next);update();return next.seq!==previous.seq;
-        }catch(e){issue='Auto Backup could not save. Your previous recovery copies were not replaced.';update();return false;}
+          const {x,error}=await prepared;if(error)throw error;if(!x)return false;
+          const action=()=>write(x.c,x.data);
+          const ok=w.navigator.locks?await w.navigator.locks.request('journal-external-backup:'+id,action):await action();
+          await render();return ok;
+        }catch(e){issue=e.message||'Could not save to the selected folder.';await render();return false;}
       };
-      captures=captures.then(run,run);
-      return captures;
+      queue=queue.then(run,run);return queue;
     }
-    async function enable(){
-      await transact(s=>({...s,enabled:true}));
-      if(!await capture()&&issue)throw new Error(issue);
-      update();
-    }
-    async function toggle(){
+    async function choose(){
       try{
-        const s=await state();
-        if(s.enabled)await transact(v=>({...v,enabled:false}));
-        else await enable();
-        issue=''; update();
-      }catch(e){issue=e.message||'Auto Backup setup failed.';update();}
-    }
-    async function connect(){
-      try{
-        if(!supportsFolder)return;
-        const handle=await g.showDirectoryPicker({id:id+'-backup',mode:'readwrite'});
-        const s=await state();
-        await useHandle('readwrite',db=>db.put(handle,id));
-        const token=(g.crypto?.randomUUID?.()||Date.now().toString(36)+Math.random().toString(36).slice(2)).replace(/[^a-z0-9-]/gi,'');
-        await transact(v=>({...v,folder:{name:handle.name,token}}));
-        if(!s.enabled)await enable();
-        external='Folder selected.';queue(await state());update();
-      }catch(e){if(e.name!=='AbortError'){external=e.message||'Folder selection failed.';update();}}
+        // The picker must run directly from this tap, before any asynchronous work.
+        const handle=await w.showDirectoryPicker({id:id+'-backup',mode:'readwrite'});
+        const previous=await configured();
+        const isSame=previous?.handle&&await previous.handle.isSameEntry(handle);
+        const token=isSame?previous.token:w.crypto.randomUUID();
+        await saveConfig({handle,token,enabled:true});
+        issue='Folder selected.';await capture();
+      }catch(e){if(e.name!=='AbortError')issue=e.message||'Could not choose a folder.';}
+      await render();
     }
     async function reconnect(){
-      try{await busy;await syncFolder(await state(),true);}catch(e){external=e.message||'Unable to reconnect.';}update();
+      try{
+        const c=config;if(!c)return;
+        const result=await c.handle.requestPermission({mode:'readwrite'});
+        if(result!=='granted')throw Error('The folder was not granted write permission.');
+        await saveConfig({...c,enabled:true});await capture();
+      }catch(e){issue=e.message||'Could not reconnect the folder.';}
+      await render();
     }
-    async function restore(item) {
+    async function restore(item){
       try{
         const data=unpack(item);
-        if(!g.confirm('Restore '+name+' from this copy? It may replace the data this backup covers.'))return;
-        if((await state()).enabled)await capture();
-        const ok=await apply(data);
-        if(ok===false)throw new Error('Restore did not complete successfully.');
-        if((await state()).enabled)await capture();
-        issue='Backup restored.';update();
-      }catch(e){issue=e.message||'Unable to restore this copy.';update();}
+        if(!w.confirm('Restore '+name+' from this file? It may replace the data this backup covers.'))return;
+        const ok=await apply(data);if(ok===false)throw Error('Restore did not complete successfully.');
+        issue='Backup restored.';await capture();
+      }catch(e){issue=e.message||'Could not restore this file.';}
+      await render();
     }
-    function saveFile(item) {
-      const file=new File([copy(item)],id+'-backup-'+item.savedAt.replace(/[:.]/g,'-')+'.json',{type:'application/json'});
-      if(g.navigator.canShare?.({files:[file]})){
-        g.navigator.share({files:[file],title:name+' backup'}).catch(e=>{if(e.name!=='AbortError'){issue='Could not share this file.';update();}});
-      }else{
-        const uri=URL.createObjectURL(file), a=document.createElement('a');
-        a.href=uri;a.download=file.name;a.hidden=true;document.body.append(a);a.click();a.remove();
-        setTimeout(()=>URL.revokeObjectURL(uri),1000);
-      }
-    }
-    function button(label,fn) { const b=document.createElement('button');b.type='button';b.textContent=label;b.onclick=fn;b.style.cssText='border:1px solid #7b858e;border-radius:.4rem;padding:.5rem .7rem;margin:.15rem;background:ButtonFace;color:ButtonText;font:inherit;min-height:2.75rem';return b; }
-    function paragraph(value) { const el=document.createElement('p');el.textContent=value;el.style.margin='.55rem 0';return el; }
-    async function update(){
+    function button(label,fn){const b=document.createElement('button');b.type='button';b.textContent=label;b.onclick=fn;b.style.cssText='border:1px solid #7b858e;border-radius:.4rem;padding:.5rem .7rem;margin:.15rem;background:ButtonFace;color:ButtonText;font:inherit;min-height:2.75rem';return b;}
+    function paragraph(value){const p=document.createElement('p');p.textContent=value;return p;}
+    async function render(){
       if(!panel?.open)return;
-      const request=++renderId;
-      const focus=document.activeElement, label=focus?.textContent;
+      const rid=++renderId;
+      const h=document.createElement('h2');h.id=id+'-auto-backup-title';h.textContent='Auto Backup';
+      const rows=[h];
       try{
-        const s=await state();if(request!==renderId||!panel.open)return;const h=document.createElement('h2');h.id=key+'-heading';h.textContent='Auto Backup';
-        const helper=paragraph('Keeps the latest two distinct saved copies. On-device copies may be lost if you remove the app or clear its storage. Use Save a copy to keep a separate file.');
-        const status=paragraph(issue||external||'');status.setAttribute('role','status');
-        panel.replaceChildren(h,helper,button(s.enabled?'Pause Auto Backup':'Turn on Auto Backup',toggle));
-        if(supportsFolder){
-          panel.append(paragraph(s.folder?'Selected folder: '+s.folder.name:'Choose a writable folder for automatic external copies.'));
-          if(!s.folder)panel.append(button('Choose folder',connect));
-          else panel.append(button('Reconnect folder',reconnect),button('Disconnect folder',async()=>{
-            try{await transact(v=>({...v,folder:null}));external='Folder disconnected; previous files were not changed.';update();}
-            catch(e){external=e.message;update();}
-          }),button('Choose another folder',connect));
-        }else panel.append(paragraph('This browser cannot automatically write to an external Files folder. Saving a copy is a manual step.'));
-        for(const [i,item] of s.slots.entries()){
-          const area=document.createElement('section');
-          area.append(paragraph((i===0?'Most recent':'Previous')+' · '+new Date(item.savedAt).toLocaleString()),
-            button('Restore '+(i===0?'most recent':'previous'),()=>restore(item)),
-            button('Save a copy',()=>{try{saveFile(item);}catch(e){issue=e.message;update();}}));
-          panel.append(area);
+        const c=await configured();
+        if(!available){
+          rows.push(paragraph('This browser cannot automatically write to a Files folder. Auto Backup is off and no local backup copies are created. Use the regular manual export to save to Files.'));
+        }else{
+          rows.push(paragraph('After setup, each saved change goes straight to your selected folder. Only the two latest distinct copies are kept there. No copies are stored in the web app.'));
+          rows.push(button(c?'Choose a different folder':'Choose backup folder',choose));
+          if(c){
+            rows.push(paragraph('Selected folder: '+c.handle.name));
+            const canRead=await c.handle.queryPermission({mode:'readwrite'})==='granted';
+            if(!c.enabled||!canRead)rows.push(button('Reconnect or resume folder',reconnect));
+            if(c.enabled)rows.push(button('Pause Auto Backup',async()=>{try{await saveConfig({...c,enabled:false});issue='Paused; existing files were not changed.';}catch(e){issue=e.message;}await render();}));
+            if(canRead){
+              for(const [i,row] of (await entries(c)).entries())rows.push(paragraph((i?'Previous':'Most recent')+' · '+new Date(row.item.savedAt).toLocaleString()),button(i?'Restore previous':'Restore most recent',()=>restore(row.item)));
+            }
+          }
         }
-        const input=document.createElement('input');input.type='file';input.accept='.json,application/json';input.hidden=true;
-        input.onchange=async ()=>{try{if(!input.files?.length)return;const file=input.files[0];if(file.size>150_000_000)throw new Error('This recovery file is too large.');await restore(JSON.parse(await file.text()));}catch(e){issue=e.message;update();}};
-        panel.append(input,button('Restore from file',()=>input.click()),button('Close',()=>panel.close()),status);
-      }catch(e){panel.replaceChildren(paragraph(e.message||'Could not read Auto Backup.'),button('Close',()=>panel.close()));}
-      if(label&&focus?.tagName==='BUTTON')[...panel.querySelectorAll('button')].find(b=>b.textContent===label)?.focus();
+      }catch(e){rows.push(paragraph(e.message||'The selected backup folder could not be read.'));}
+      if(rid!==renderId||!panel.open)return;
+      const status=paragraph(issue);status.setAttribute('role','status');
+      const input=document.createElement('input');input.type='file';input.accept='.json,application/json';input.hidden=true;
+      input.onchange=async()=>{try{const f=input.files?.[0];if(!f)return;if(f.size>150_000_000)throw Error('This recovery file is too large.');await restore(JSON.parse(await f.text()));}catch(e){issue=e.message;await render();}};
+      panel.replaceChildren(...rows,input,button('Restore Auto Backup file',()=>input.click()),button('Close',()=>panel.close()),status);
     }
-    async function open(){
+    function open(){
       if(!panel){
-        panel=document.createElement('dialog');panel.setAttribute('aria-labelledby',key+'-heading');
+        panel=document.createElement('dialog');panel.setAttribute('aria-label','Auto Backup');
         panel.style.cssText='box-sizing:border-box;font:16px/1.4 system-ui;width:min(28rem,calc(100% - 2rem));max-height:85vh;overflow:auto;padding:1rem;background:Canvas;color:CanvasText;border:1px solid #7b858e;border-radius:.65rem';
         document.body.append(panel);
       }
-      if(!panel.open)panel.showModal();
-      await update();
-      panel.querySelector('button')?.focus();
+      if(!panel.open)panel.showModal();render();
     }
     function mount(holder){if(holder)holder.append(button('Auto Backup',open));}
     return Object.freeze({capture,open,mount});
   }
-  g.AutoBackup=Object.freeze({create});
+  w.AutoBackup=Object.freeze({create});
 })(typeof window==='object'?window:globalThis);

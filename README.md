@@ -190,6 +190,6 @@ Recognized cities use display-only country defaults. Optional Country in the res
 
 ## Auto Backup
 
-Open **Auto Backup** in settings or notebook tools and turn it on. It keeps up to two distinct saved versions of the notebook, Trash, category notes and delivery receipts, but no private-copy connection keys. Restore only after reviewing the confirmation. Existing manual backup options are unchanged.
+Open **Auto Backup** in settings or notebook tools and choose a writable external folder on a supported browser. It keeps up to two distinct saved versions of the notebook, Trash, category notes and delivery receipts, but no private-copy connection keys. Restore only after reviewing the confirmation. Existing manual backup options are unchanged.
 
-On-device recovery copies can disappear if you clear app storage. Choose a writable folder where the browser allows it. On iPhone, use **Save a copy** and choose **Save to Files**; automatic writes to Files are not available in the iPhone web app. Keep the exported file private.
+Automatic backup files are written only to the selected folder; the web app stores the folder permission, not copies. iPhone Safari and Home Screen web apps cannot write automatically to a chosen Files folder. Use the regular manual export and **Save to Files** instead. Keep your exported files private.
