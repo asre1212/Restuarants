@@ -1,3 +1,4 @@
+import './auto-backup.js';
 import {createRestaurantMap} from './map.js';
 import {PAGES_URL,onGitHubPages} from './hosting.js';
 import {startPrivateSharing} from './sharing-ui.js';
@@ -5,11 +6,19 @@ import {startUpdates} from './updates.js';
 import {createInboxClient} from './inbox-client.js';
 import {parseNotebookBackup} from './backup.js';
 import {clean,restaurantCountry,regionRows,isToTry,categoryTree,sortRestaurants,sortMichelin,tastingNotes,key,norm,parseImport,planImport,roundQuarter,readableNotebook,VERSION} from './core.js';
-import {openDB,all,write,setting,mergeDelivery,roundStoredRatings,reconcileVisitStatus,reconcilePochaCategories,categoryNotes,restoreCategoryNotes,notebookBackup,restoreNotebook} from './db.js';
+import {openDB,all,write,setting,mergeDelivery,roundStoredRatings,reconcileVisitStatus,reconcilePochaCategories,categoryNotes,restoreCategoryNotes,notebookBackup,restoreNotebook,restoreNotebookVersion} from './db.js';
 const $=id=>document.getElementById(id);
 const node=(tag,text,cls)=>{const n=document.createElement(tag);if(text!==undefined)n.textContent=text;if(cls)n.className=cls;return n;};
 const button=(text,action,cls)=>{const b=node('button',text,cls);b.type='button';b.addEventListener('click',action);return b;};
 const categoryNoteDrafts=new Map();
+const autoBackup=window.AutoBackup.create({
+ id:'table-notes-restaurants',name:'Table Notes',
+ read:async()=>{const {exportedAt,...packet}=await notebookBackup();return packet;},
+ validate:packet=>{const checked=parseNotebookBackup(JSON.stringify(packet));if(checked.restaurants.some(r=>!r.id))throw Error('Recovery copy is missing a record ID.');return {format:'restaurant-log-backup',version:1,...checked};},
+ apply:async packet=>{await restoreNotebookVersion(packet);await refresh();return true;}
+});
+$('auto-backup').onclick=()=>autoBackup.open();
+window.addEventListener('notebook-changed',()=>autoBackup.capture());
 // Expansion is for this page session only, never persisted with the notebook.
 const expandedCategories=new Set();
 let renderedCategorySearch=false;

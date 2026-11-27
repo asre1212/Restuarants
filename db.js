@@ -14,6 +14,21 @@ export function notebookBackup(){return new Promise((resolve,reject)=>{
  tx.onerror=()=>reject(tx.error);tx.onabort=()=>reject(tx.error);
 });}
 
+// Exact on-device recovery is separate from the existing non-destructive merge import.
+// Never overwrite sharing keys, connection settings, or successfully processed deliveries.
+export function restoreNotebookVersion(packet){return new Promise((resolve,reject)=>{
+ const tx=db.transaction(['restaurants','settings'],'readwrite'),records=tx.objectStore('restaurants'),settings=tx.objectStore('settings');
+ const selected=settings.getAll();
+ records.clear();
+ for(const row of packet.restaurants)records.put(row);
+ selected.onsuccess=()=>{
+  for(const row of selected.result)if(row.key.startsWith('category-note:')||row.key.startsWith('category-alias-copied:'))settings.delete(row.key);
+  for(const [k,v] of Object.entries(packet.categoryNotes))settings.put({key:'category-note:'+k,value:v});
+  for(const [k,v] of Object.entries(packet.settings))settings.put({key:k,value:v});
+ };
+ tx.oncomplete=()=>resolve();tx.onerror=()=>reject(tx.error);tx.onabort=()=>reject(tx.error||Error('Auto restore did not complete.'));
+});}
+
 export const SHARING_KEY='private-sharing-v1';
 // Connection keys never leave this device in a backup or in a notebook snapshot.
 export function sharingState(patch,expectedToken){return new Promise((resolve,reject)=>{
